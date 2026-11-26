@@ -234,7 +234,7 @@ export default function SettingsPage() {
             <div className="p-4 rounded-xl bg-background border border-border">
               <div className="text-xs text-foreground-subtle font-semibold uppercase">Access Level</div>
               <div className="text-sm font-bold mt-1 text-accent-green">
-                {isAdmin ? 'Full CRUD (Add, Edit, Delete all records)' : 'Read + Add Clip Entries Only'}
+                {isAdmin ? 'Admin (Assign IDs, Manage Members, Edit/Delete Clips)' : 'Member (Add Clips & View All)'}
               </div>
             </div>
           </div>

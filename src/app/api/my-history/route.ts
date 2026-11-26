@@ -16,27 +16,39 @@ export async function GET(request: NextRequest) {
     const requestedDays = parseInt(searchParams.get('days') || '12', 10);
     const requestedPersonId = searchParams.get('personId');
 
+    const isAdmin = session.role === 'admin';
+    let allPeople: { id: string; name: string; email?: string | null }[] = [];
+
+    if (isAdmin) {
+      const allRes = await pool.query('SELECT id, name, email FROM people ORDER BY name ASC');
+      allPeople = allRes.rows;
+    }
+
     // 1. Resolve which person's history to fetch
-    let targetPersonId = requestedPersonId;
+    let targetPersonId: string | null = null;
     let targetPersonName = session.full_name || session.email;
 
-    if (!targetPersonId) {
-      // Find person linked by email
+    if (isAdmin) {
+      if (requestedPersonId) {
+        const match = allPeople.find((p) => p.id === requestedPersonId);
+        if (match) {
+          targetPersonId = match.id;
+          targetPersonName = match.name;
+        }
+      }
+      if (!targetPersonId && allPeople.length > 0) {
+        targetPersonId = allPeople[0].id;
+        targetPersonName = allPeople[0].name;
+      }
+    } else {
+      // Regular user can ONLY view their own person record
       const pRes = await pool.query(
-        'SELECT id, name, email FROM people WHERE email = $1 OR user_id = $2',
-        [session.email.toLowerCase(), session.id]
+        'SELECT id, name, email FROM people WHERE LOWER(email) = LOWER($1) OR user_id = $2',
+        [session.email, session.id]
       );
-
       if (pRes.rows.length > 0) {
         targetPersonId = pRes.rows[0].id;
         targetPersonName = pRes.rows[0].name;
-      } else {
-        // If admin and no linked person record, get the first person
-        const firstPerson = await pool.query('SELECT id, name FROM people ORDER BY name ASC LIMIT 1');
-        if (firstPerson.rows.length > 0) {
-          targetPersonId = firstPerson.rows[0].id;
-          targetPersonName = firstPerson.rows[0].name;
-        }
       }
     }
 
@@ -46,6 +58,7 @@ export async function GET(request: NextRequest) {
         person_id: '',
         total_clips: 0,
         days_count: requestedDays,
+        all_people: allPeople,
         id_summaries: [],
         daily_records: [],
       });
@@ -128,6 +141,7 @@ export async function GET(request: NextRequest) {
       range_start: startDate,
       range_end: endDate,
       total_clips: rangeTotalClips,
+      all_people: allPeople,
       id_summaries: assignedIdsRes.rows,
       daily_records: dailyRecords,
     });

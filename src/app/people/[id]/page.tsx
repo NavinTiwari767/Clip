@@ -280,9 +280,9 @@ export default function PersonDetailPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link href={`/daily-entry?personId=${person.id}`}>
+            <Link href={isAdmin ? `/my-history?personId=${person.id}` : `/daily-entry`}>
               <Button variant="primary" size="sm" leftIcon={<CalendarCheck className="w-4 h-4" />}>
-                Record Daily Clips
+                {isAdmin ? 'View Clip History' : 'Record Daily Clips'}
               </Button>
             </Link>
             {isAdmin && (

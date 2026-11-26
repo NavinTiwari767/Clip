@@ -45,7 +45,19 @@ export async function POST(request: NextRequest) {
       [cleanEmail, passwordHash, full_name?.trim() || cleanEmail.split('@')[0], cleanRole]
     );
 
-    return NextResponse.json({ user: res.rows[0] });
+    const createdUser = res.rows[0];
+
+    // If regular member ('user'), also ensure a linked record exists in `people` so Admin can assign IDs to them
+    if (cleanRole === 'user') {
+      await pool.query(
+        `INSERT INTO people (name, email, user_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, user_id = EXCLUDED.user_id`,
+        [createdUser.full_name, cleanEmail, createdUser.id]
+      );
+    }
+
+    return NextResponse.json({ user: createdUser });
   } catch (err: any) {
     if (err.code === '23505') {
       return NextResponse.json({ error: 'A user with this email address already exists' }, { status: 400 });

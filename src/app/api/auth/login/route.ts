@@ -33,12 +33,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    const isMatch = verifyPassword(password, user.password_hash) || password === 'admin';
+    const isMatch = verifyPassword(password, user.password_hash);
     if (!isMatch) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
 
-    const role = isAdmin ? 'admin' : 'user';
+    const role = isAdmin || user.role === 'admin' ? 'admin' : 'user';
     const sessionUser: SessionUser = {
       id: user.id,
       email: user.email,

@@ -35,8 +35,8 @@ export function verifyToken(token: string): SessionUser | null {
 
     const parsed = JSON.parse(Buffer.from(data, 'base64').toString('utf-8')) as SessionUser;
     
-    // Always dynamically ensure role reflects the 4 admin emails
-    parsed.role = isAdminEmail(parsed.email) ? 'admin' : 'user';
+    // Ensure designated admin emails always have admin role, and preserve DB-assigned admin role from signed token
+    parsed.role = isAdminEmail(parsed.email) || parsed.role === 'admin' ? 'admin' : 'user';
     return parsed;
   } catch {
     return null;

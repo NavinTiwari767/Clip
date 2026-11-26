@@ -7,6 +7,11 @@ export const dynamic = 'force-dynamic';
 // GET entries by date
 export async function GET(request: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const dateStr = searchParams.get('date');
     if (!dateStr) {
@@ -29,7 +34,7 @@ export async function GET(request: NextRequest) {
       JOIN assigned_ids ai ON ce.assigned_id = ai.id
       JOIN people p ON ai.person_id = p.id
       WHERE ce.entry_date = $1
-      ORDER BY ce.clips DESC;`,
+      ORDER BY p.name ASC, ce.clips DESC;`,
       [dateStr]
     );
 
@@ -40,7 +45,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST upsert clip entry (Accessible to BOTH Admin and User! User adds their clips)
+// POST: Members add daily clips for their assigned IDs.
+// Admins ONLY assign IDs and edit/delete existing clips (they do not add new daily clips).
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
@@ -48,23 +54,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    if (session.role === 'admin') {
+      return NextResponse.json(
+        {
+          error:
+            'Admins only assign IDs and edit/delete existing clip records. Only members submit daily clip entries.',
+        },
+        { status: 403 }
+      );
+    }
+
     const { assigned_id, entry_date, clips } = await request.json();
     const count = parseInt(clips, 10);
     if (!assigned_id || !entry_date || isNaN(count) || count < 0) {
-      return NextResponse.json({ error: 'Valid assigned_id, entry_date and non-negative clips required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Valid assigned_id, entry_date and non-negative clips required' },
+        { status: 400 }
+      );
     }
 
-    // If regular user (non-admin), check if this is an update on an existing entry:
-    // Prompt: "user apna clipwager add kar skta hai and sab kuch dekh bhi skta hai only but admin uske edit,delecdet and pura crud karta hai"
-    // So if an entry already exists and clips value is changing, non-admin shouldn't overwrite unless they are initially adding it
+    // Verify that the assigned_id belongs to the logged-in member
+    const ownershipRes = await pool.query(
+      `SELECT ai.id
+       FROM assigned_ids ai
+       JOIN people p ON ai.person_id = p.id
+       WHERE ai.id = $1 AND (LOWER(p.email) = LOWER($2) OR p.user_id = $3)`,
+      [assigned_id, session.email, session.id]
+    );
+
+    if (!ownershipRes.rowCount || ownershipRes.rowCount === 0) {
+      return NextResponse.json(
+        { error: 'Permission denied: You can only add clips for your own assigned IDs.' },
+        { status: 403 }
+      );
+    }
+
+    // Check if an entry already exists for this assigned_id + date (members cannot edit existing entries)
     const existingRes = await pool.query(
       'SELECT id FROM clip_entries WHERE assigned_id = $1 AND entry_date = $2',
       [assigned_id, entry_date]
     );
 
-    if (existingRes.rowCount && existingRes.rowCount > 0 && session.role !== 'admin') {
+    if (existingRes.rowCount && existingRes.rowCount > 0) {
       return NextResponse.json(
-        { error: 'Permission denied: An entry already exists for this ID on this date. Only Admin can edit existing records.' },
+        {
+          error:
+            'An entry already exists for this ID on this date. Only Admin can edit or manipulate existing records.',
+        },
         { status: 403 }
       );
     }
@@ -72,15 +108,13 @@ export async function POST(request: NextRequest) {
     const res = await pool.query(
       `INSERT INTO clip_entries (assigned_id, entry_date, clips)
        VALUES ($1, $2, $3)
-       ON CONFLICT (assigned_id, entry_date)
-       DO UPDATE SET clips = EXCLUDED.clips, updated_at = now()
        RETURNING *;`,
       [assigned_id, entry_date, count]
     );
 
     return NextResponse.json({ entry: res.rows[0] });
   } catch (err: any) {
-    console.error('Error upserting clip entry:', err);
+    console.error('Error creating clip entry:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

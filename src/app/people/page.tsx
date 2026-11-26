@@ -472,14 +472,14 @@ export default function PeoplePage() {
                     href={`/people/${person.id}`}
                     className="text-xs font-semibold text-accent-purple hover:underline flex items-center gap-1"
                   >
-                    View History & IDs &rarr;
+                    ID Details &rarr;
                   </Link>
 
                   <Link
-                    href={`/daily-entry?personId=${person.id}`}
+                    href={isAdmin ? `/my-history?personId=${person.id}` : `/daily-entry`}
                     className="text-xs font-medium text-accent-blue hover:underline"
                   >
-                    Add Clips for {person.name.split(' ')[0]}
+                    {isAdmin ? `10-12 Day History →` : `Add Clips`}
                   </Link>
                 </div>
               </div>

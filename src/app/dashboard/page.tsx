@@ -7,6 +7,7 @@ import StatCard from '@/components/ui/StatCard';
 import { Button } from '@/components/ui/Button';
 import { getDashboardData } from '@/lib/services/clipService';
 import { formatNumber, formatDate } from '@/lib/utils';
+import { useAuth } from '@/lib/useAuth';
 import type { ClipEntryDetail } from '@/types/database';
 import {
   Users,
@@ -21,6 +22,8 @@ import {
   RefreshCw,
   BarChart2,
   Sparkles,
+  Tag,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,6 +36,7 @@ import {
 } from 'recharts';
 
 export default function DashboardPage() {
+  const { isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
     totalPeople: number;
@@ -75,8 +79,8 @@ export default function DashboardPage() {
 
   return (
     <AppShell
-      title="Admin Dashboard"
-      subtitle="Overview of your clip production, people, and daily activity"
+      title={isAdmin ? 'Admin Dashboard' : 'Member Dashboard'}
+      subtitle="Overview of clip production, team members, assigned IDs, and daily activity"
     >
       <div className="space-y-8 pb-12">
         {/* Top Header Actions */}
@@ -89,7 +93,9 @@ export default function DashboardPage() {
               </span>
             </h2>
             <p className="text-xs text-foreground-muted mt-1">
-              Real-time calculations for all tracked IDs and people
+              {isAdmin
+                ? 'Assign IDs to members, monitor ID-wise clips, and edit/manage clip records'
+                : 'View live production totals and add daily clips for your assigned IDs'}
             </p>
           </div>
 
@@ -103,24 +109,36 @@ export default function DashboardPage() {
             >
               Refresh
             </Button>
-            <Link href="/daily-entry">
-              <Button
-                variant="primary"
-                size="sm"
-                leftIcon={<Plus className="w-4 h-4" />}
-              >
-                New Daily Entry
-              </Button>
-            </Link>
+            {isAdmin ? (
+              <Link href="/daily-entry">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Tag className="w-4 h-4" />}
+                >
+                  Assign IDs & Manage
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/daily-entry">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Plus className="w-4 h-4" />}
+                >
+                  New Daily Entry
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
         {/* 4 Primary Metric Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            title="Total People"
+            title="Total Members"
             value={data.totalPeople}
-            subtitle="Registered active personnel"
+            subtitle="Registered active team members"
             icon={Users}
             iconColor="purple"
           />
@@ -232,45 +250,91 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-3">
-                <Link
-                  href="/daily-entry"
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-background border border-border hover:border-accent-purple/50 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-accent-purple/10 text-accent-purple">
-                      <Plus className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-foreground group-hover:text-accent-purple transition-colors">
-                        Add Daily Clip Entry
+                {isAdmin ? (
+                  <>
+                    <Link
+                      href="/daily-entry"
+                      className="flex items-center justify-between p-3.5 rounded-xl bg-background border border-border hover:border-accent-purple/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-accent-purple/10 text-accent-purple">
+                          <SlidersHorizontal className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-foreground group-hover:text-accent-purple transition-colors">
+                            Assign IDs & Edit Clips
+                          </div>
+                          <div className="text-xs text-foreground-muted">
+                            Type IDs to assign & edit/delete entries
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-foreground-muted">
-                        Record or update daily counts
-                      </div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-foreground-muted group-hover:translate-x-1 transition-transform" />
-                </Link>
+                      <ArrowRight className="w-4 h-4 text-foreground-muted group-hover:translate-x-1 transition-transform" />
+                    </Link>
 
-                <Link
-                  href="/people"
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-background border border-border hover:border-accent-blue/50 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-accent-blue/10 text-accent-blue">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-foreground group-hover:text-accent-blue transition-colors">
-                        Manage People & IDs
+                    <Link
+                      href="/people"
+                      className="flex items-center justify-between p-3.5 rounded-xl bg-background border border-border hover:border-accent-blue/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-accent-blue/10 text-accent-blue">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-foreground group-hover:text-accent-blue transition-colors">
+                            Manage Members & Passwords
+                          </div>
+                          <div className="text-xs text-foreground-muted">
+                            Add members & view ID-wise clip counts
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-foreground-muted">
-                        Assign multiple IDs to staff
+                      <ArrowRight className="w-4 h-4 text-foreground-muted group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/daily-entry"
+                      className="flex items-center justify-between p-3.5 rounded-xl bg-background border border-border hover:border-accent-purple/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-accent-purple/10 text-accent-purple">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-foreground group-hover:text-accent-purple transition-colors">
+                            Add Daily Clip Entry
+                          </div>
+                          <div className="text-xs text-foreground-muted">
+                            Log clips for your assigned IDs
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-foreground-muted group-hover:translate-x-1 transition-transform" />
-                </Link>
+                      <ArrowRight className="w-4 h-4 text-foreground-muted group-hover:translate-x-1 transition-transform" />
+                    </Link>
+
+                    <Link
+                      href="/my-history"
+                      className="flex items-center justify-between p-3.5 rounded-xl bg-background border border-border hover:border-accent-blue/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-accent-blue/10 text-accent-blue">
+                          <CalendarDays className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-foreground group-hover:text-accent-blue transition-colors">
+                            My 10-12 Day History
+                          </div>
+                          <div className="text-xs text-foreground-muted">
+                            Check IDs & daily clip counts
+                          </div>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-foreground-muted group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                  </>
+                )}
 
                 <Link
                   href="/reports"
@@ -331,11 +395,11 @@ export default function DashboardPage() {
                 <Users className="w-8 h-8 text-foreground-subtle mx-auto mb-2 opacity-50" />
                 <p className="text-sm font-medium text-foreground">No entries recorded this month</p>
                 <p className="text-xs text-foreground-muted mt-1">
-                  Add entries in Daily Clip Entry to view rankings
+                  {isAdmin ? 'Assign IDs to members so they can log clips' : 'Add entries in Daily Clip Entry to view rankings'}
                 </p>
-                <Link href="/daily-entry" className="inline-block mt-3">
+                <Link href={isAdmin ? '/people' : '/daily-entry'} className="inline-block mt-3">
                   <Button variant="outline" size="sm">
-                    Enter First Clips
+                    {isAdmin ? 'Assign IDs' : 'Enter First Clips'}
                   </Button>
                 </Link>
               </div>
@@ -359,7 +423,7 @@ export default function DashboardPage() {
                           <ExternalLink className="w-3 h-3 text-foreground-subtle" />
                         </Link>
                         <div className="text-xs text-foreground-muted">
-                          {person.assigned_ids_count} active ID{person.assigned_ids_count === 1 ? '' : 's'}
+                          {person.assigned_ids_count} assigned ID{person.assigned_ids_count === 1 ? '' : 's'}
                         </div>
                       </div>
                     </div>
@@ -397,7 +461,7 @@ export default function DashboardPage() {
                 href="/daily-entry"
                 className="text-xs font-semibold text-accent-blue hover:underline"
               >
-                Go to Entry Table
+                {isAdmin ? 'Manage / Edit Records' : 'Go to Entry Table'}
               </Link>
             </div>
 
@@ -406,7 +470,7 @@ export default function DashboardPage() {
                 <Clock className="w-8 h-8 text-foreground-subtle mx-auto mb-2 opacity-50" />
                 <p className="text-sm font-medium text-foreground">No recent entries found</p>
                 <p className="text-xs text-foreground-muted mt-1">
-                  Entries saved will automatically show up here
+                  Entries saved by members will automatically show up here
                 </p>
               </div>
             ) : (

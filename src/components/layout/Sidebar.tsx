@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   UserCheck,
   ChevronRight,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 
@@ -28,39 +29,73 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, isAdmin, logout } = useAuth();
 
-  const navLinks = [
-    {
-      label: 'Dashboard',
-      href: '/dashboard',
-      icon: LayoutDashboard,
-    },
-    {
-      label: 'People & IDs',
-      href: '/people',
-      icon: Users,
-      matchSubPaths: true,
-    },
-    {
-      label: 'Daily Clip Entry',
-      href: '/daily-entry',
-      icon: CalendarCheck,
-    },
-    {
-      label: 'My Clip History',
-      href: '/my-history',
-      icon: CalendarDays,
-    },
-    {
-      label: 'Monthly Reports',
-      href: '/reports',
-      icon: BarChart3,
-    },
-    {
-      label: 'Settings',
-      href: '/settings',
-      icon: Settings,
-    },
-  ];
+  const navLinks = isAdmin
+    ? [
+        {
+          label: 'Dashboard',
+          href: '/dashboard',
+          icon: LayoutDashboard,
+        },
+        {
+          label: 'Members & IDs',
+          href: '/people',
+          icon: Users,
+          matchSubPaths: true,
+        },
+        {
+          label: 'Assign IDs & Edit Clips',
+          href: '/daily-entry',
+          icon: SlidersHorizontal,
+        },
+        {
+          label: 'Member History',
+          href: '/my-history',
+          icon: CalendarDays,
+        },
+        {
+          label: 'Monthly Reports',
+          href: '/reports',
+          icon: BarChart3,
+        },
+        {
+          label: 'Settings',
+          href: '/settings',
+          icon: Settings,
+        },
+      ]
+    : [
+        {
+          label: 'Dashboard',
+          href: '/dashboard',
+          icon: LayoutDashboard,
+        },
+        {
+          label: 'Daily Clip Entry',
+          href: '/daily-entry',
+          icon: CalendarCheck,
+        },
+        {
+          label: 'My Clip History',
+          href: '/my-history',
+          icon: CalendarDays,
+        },
+        {
+          label: 'People & IDs',
+          href: '/people',
+          icon: Users,
+          matchSubPaths: true,
+        },
+        {
+          label: 'Monthly Reports',
+          href: '/reports',
+          icon: BarChart3,
+        },
+        {
+          label: 'Settings',
+          href: '/settings',
+          icon: Settings,
+        },
+      ];
 
   const isLinkActive = (href: string, matchSubPaths?: boolean) => {
     if (href === '/dashboard' && pathname === '/dashboard') return true;
@@ -143,7 +178,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   isAdmin ? 'bg-accent-purple' : 'bg-accent-blue'
                 }`}
               />
-              {isAdmin ? 'Full CRUD Access' : 'Add & View Only'}
+              {isAdmin ? 'Assign IDs & Edit Clips' : 'Add Clips & View Only'}
             </div>
           </div>
         </div>

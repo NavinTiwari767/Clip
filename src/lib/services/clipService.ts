@@ -147,7 +147,7 @@ export async function getClipEntriesByDate(dateString: string): Promise<ClipEntr
   return data.entries || [];
 }
 
-// 11. Upsert Clip Entry (Both Admin & User can add clips)
+// 11. Create Clip Entry (Members add new clips for their assigned IDs)
 export async function upsertClipEntry(
   assignedId: string,
   entryDate: string,
@@ -166,7 +166,26 @@ export async function upsertClipEntry(
   return data.entry;
 }
 
-// 12. Delete Clip Entry (Admin only)
+// 12. Update / Manipulate Clip Entry (Admin only)
+export async function updateClipEntry(
+  entryId: string,
+  clips: number,
+  entryDate?: string
+): Promise<ClipEntry> {
+  const res = await fetch(`/api/clip-entries/${entryId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clips, entry_date: entryDate }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update clip entry');
+  }
+  const data = await res.json();
+  return data.entry;
+}
+
+// 13. Delete Clip Entry (Admin only)
 export async function deleteClipEntry(id: string): Promise<void> {
   const res = await fetch(`/api/clip-entries/${id}`, { method: 'DELETE' });
   if (!res.ok) {

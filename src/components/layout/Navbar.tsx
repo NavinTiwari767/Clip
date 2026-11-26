@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Menu, Plus, Calendar, Shield, User } from 'lucide-react';
+import { Menu, Plus, Calendar, Shield, User, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/lib/useAuth';
 
@@ -46,14 +46,24 @@ export default function Navbar({ onToggleSidebar, title, subtitle }: NavbarProps
           <span>{todayFormatted}</span>
         </div>
 
-        {/* Quick Add Clip Entry */}
-        <Link
-          href="/daily-entry"
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium text-white bg-accent-purple hover:bg-accent-purple-hover rounded-lg transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Entry</span>
-        </Link>
+        {/* Role-specific Primary Action */}
+        {isAdmin ? (
+          <Link
+            href="/daily-entry"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium text-white bg-accent-purple hover:bg-accent-purple-hover rounded-lg transition-colors shadow-sm"
+          >
+            <Tag className="w-4 h-4" />
+            <span>Assign IDs</span>
+          </Link>
+        ) : (
+          <Link
+            href="/daily-entry"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs md:text-sm font-medium text-white bg-accent-purple hover:bg-accent-purple-hover rounded-lg transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Entry</span>
+          </Link>
+        )}
 
         {/* User Role Tag */}
         <div

@@ -9,7 +9,9 @@ declare global {
   var __postgres_pool: pg.Pool | undefined;
 }
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString =
+  process.env.DATABASE_URL ||
+  'postgresql://postgres.ixrsdsidhklzyqejvyxe:1zsP2NgrXKtOpoJi@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
 
 export const pool: pg.Pool =
   global.__postgres_pool ||

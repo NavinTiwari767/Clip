@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   CalendarCheck,
+  CalendarDays,
   BarChart3,
   Settings,
   LogOut,
@@ -43,6 +44,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       label: 'Daily Clip Entry',
       href: '/daily-entry',
       icon: CalendarCheck,
+    },
+    {
+      label: 'My Clip History',
+      href: '/my-history',
+      icon: CalendarDays,
     },
     {
       label: 'Monthly Reports',

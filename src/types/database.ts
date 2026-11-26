@@ -1,6 +1,8 @@
 export interface Person {
   id: string;
   name: string;
+  email?: string | null;
+  user_id?: string | null;
   created_at: string;
 }
 
@@ -10,6 +12,7 @@ export interface AssignedId {
   id_value: string;
   notes?: string | null;
   created_at: string;
+  total_clips?: number;
 }
 
 export interface ClipEntry {
@@ -69,7 +72,7 @@ export interface PersonReportSummary {
 }
 
 export interface MonthlyReportData {
-  month: number; // 1 - 12
+  month: number;
   year: number;
   month_name: string;
   overall_total_clips: number;
@@ -90,4 +93,37 @@ export interface MonthlyReportData {
     total_clips: number;
   }[];
   all_entries: ClipEntryDetail[];
+}
+
+export interface PersonalHistoryRecord {
+  entry_id: string;
+  entry_date: string;
+  clips: number;
+  assigned_id: string;
+  id_value: string;
+  id_notes?: string | null;
+}
+
+export interface PersonalHistoryData {
+  person_name: string;
+  person_id: string;
+  email?: string | null;
+  total_clips: number;
+  days_count: number;
+  id_summaries: {
+    assigned_id: string;
+    id_value: string;
+    notes?: string | null;
+    total_clips: number;
+  }[];
+  daily_records: {
+    date: string;
+    formatted_date: string;
+    total_clips: number;
+    entries: {
+      id_value: string;
+      notes?: string | null;
+      clips: number;
+    }[];
+  }[];
 }

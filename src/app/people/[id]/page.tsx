@@ -27,9 +27,10 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
-  Lock,
+  Mail,
+  Key,
 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatNumber } from '@/lib/utils';
 
 export default function PersonDetailPage() {
   const params = useParams();
@@ -40,14 +41,18 @@ export default function PersonDetailPage() {
   const [person, setPerson] = useState<PersonWithIds | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Edit Person Name Modal
+  // Edit Person Modal
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [nameValue, setNameValue] = useState('');
+  const [emailValue, setEmailValue] = useState('');
+  const [passwordValue, setPasswordValue] = useState('');
   const [nameLoading, setNameLoading] = useState(false);
 
-  // Add Assigned ID Modal
+  // Add Assigned ID Modal (Single or Bulk)
   const [isAddIdOpen, setIsAddIdOpen] = useState(false);
+  const [assignMode, setAssignMode] = useState<'single' | 'bulk'>('single');
   const [idValue, setIdValue] = useState('');
+  const [bulkIdsText, setBulkIdsText] = useState('');
   const [idNotes, setIdNotes] = useState('');
   const [addIdLoading, setAddIdLoading] = useState(false);
   const [idError, setIdError] = useState<string | null>(null);
@@ -74,6 +79,8 @@ export default function PersonDetailPage() {
       }
       setPerson(data);
       setNameValue(data.name);
+      setEmailValue(data.email || '');
+      setPasswordValue('');
     } catch (err) {
       console.error('Failed to load person:', err);
     } finally {
@@ -98,12 +105,17 @@ export default function PersonDetailPage() {
     if (!nameValue.trim()) return;
     setNameLoading(true);
     try {
-      await updatePerson(personId, nameValue.trim());
+      await updatePerson(
+        personId,
+        nameValue.trim(),
+        emailValue.trim() || undefined,
+        passwordValue.trim() || undefined
+      );
       setIsEditNameOpen(false);
-      showNotification('Person name updated');
+      showNotification('Member profile updated');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update name');
+      alert(err.message || 'Failed to update member');
     } finally {
       setNameLoading(false);
     }
@@ -112,15 +124,41 @@ export default function PersonDetailPage() {
   const handleAddId = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
-    if (!idValue.trim()) return;
+
     setAddIdLoading(true);
     setIdError(null);
     try {
-      await createAssignedId(personId, idValue.trim(), idNotes.trim() || null);
+      if (assignMode === 'bulk') {
+        if (!bulkIdsText.trim()) {
+          setIdError('Please enter at least one ID');
+          setAddIdLoading(false);
+          return;
+        }
+        await createAssignedId(
+          personId,
+          '',
+          idNotes.trim() || null,
+          bulkIdsText.trim()
+        );
+        showNotification('Bulk IDs assigned successfully');
+      } else {
+        if (!idValue.trim()) {
+          setIdError('Please enter an ID value');
+          setAddIdLoading(false);
+          return;
+        }
+        await createAssignedId(
+          personId,
+          idValue.trim(),
+          idNotes.trim() || null
+        );
+        showNotification(`ID ${idValue.trim()} assigned successfully`);
+      }
+
       setIdValue('');
+      setBulkIdsText('');
       setIdNotes('');
       setIsAddIdOpen(false);
-      showNotification(`ID ${idValue.trim()} assigned successfully`);
       loadData();
     } catch (err: any) {
       setIdError(err.message || 'Failed to assign ID');
@@ -167,14 +205,14 @@ export default function PersonDetailPage() {
       await deletePerson(personId);
       router.push('/people');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete person');
+      alert(err.message || 'Failed to delete member');
       setDeleteLoading(false);
     }
   };
 
   if (loading || !person) {
     return (
-      <AppShell title="Person Profile">
+      <AppShell title="Member Profile">
         <div className="p-8 text-center text-foreground-muted">Loading profile...</div>
       </AppShell>
     );
@@ -182,7 +220,7 @@ export default function PersonDetailPage() {
 
   return (
     <AppShell
-      title={`Person: ${person.name}`}
+      title={`Member: ${person.name}`}
       subtitle="View and manage assigned tracking IDs and individual history"
     >
       <div className="space-y-6 pb-12">
@@ -216,20 +254,26 @@ export default function PersonDetailPage() {
                   <button
                     onClick={() => setIsEditNameOpen(true)}
                     className="p-1 text-foreground-muted hover:text-accent-purple transition-colors"
-                    title="Edit Name (Admin only)"
+                    title="Edit Name, Email or Password"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              <div className="text-xs text-foreground-muted mt-1 flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-foreground-subtle" />
-                  Added {formatDate(person.created_at, 'dd MMM yyyy')}
-                </span>
+              <div className="text-xs text-foreground-muted mt-1 flex items-center gap-3 flex-wrap">
+                {person.email && (
+                  <span className="flex items-center gap-1 font-mono text-foreground">
+                    <Mail className="w-3.5 h-3.5 text-accent-blue" />
+                    {person.email}
+                  </span>
+                )}
                 <span>&bull;</span>
                 <span className="font-semibold text-accent-blue">
-                  {person.assigned_ids.length} Assigned ID{person.assigned_ids.length === 1 ? '' : 's'}
+                  {person.assigned_ids.length} Assigned IDs
+                </span>
+                <span>&bull;</span>
+                <span className="font-extrabold text-accent-purple">
+                  {formatNumber(person.total_clips || 0)} Total Clips
                 </span>
               </div>
             </div>
@@ -248,22 +292,23 @@ export default function PersonDetailPage() {
                 onClick={() => setIsDeleteOpen(true)}
                 leftIcon={<Trash2 className="w-4 h-4" />}
               >
-                Delete Person
+                Delete Member
               </Button>
             )}
           </div>
         </div>
 
         {/* Assigned IDs Management Section */}
+        {/* "admin dekh skta hai user kitna id asgn hua hai and kis id pe kitne clips kiye hai example 30001 - 10000 clips waise h sare" */}
         <div className="p-6 rounded-2xl bg-card border border-border shadow-xl">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Tag className="w-5 h-5 text-accent-purple" />
-                Assigned Tracking IDs
+                Assigned Tracking IDs & Clip Volume
               </h3>
               <p className="text-xs text-foreground-muted mt-0.5">
-                IDs assigned to {person.name} for individual production tracking
+                All tracking IDs assigned to {person.name} with cumulative clips logged on each ID
               </p>
             </div>
 
@@ -272,14 +317,16 @@ export default function PersonDetailPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  setAssignMode('single');
                   setIdValue('');
+                  setBulkIdsText('');
                   setIdNotes('');
                   setIdError(null);
                   setIsAddIdOpen(true);
                 }}
                 leftIcon={<Plus className="w-4 h-4 text-accent-purple" />}
               >
-                Assign New ID
+                Assign ID(s)
               </Button>
             )}
           </div>
@@ -289,9 +336,7 @@ export default function PersonDetailPage() {
               <Hash className="w-10 h-10 text-foreground-subtle mx-auto mb-2 opacity-50" />
               <h4 className="text-sm font-bold text-foreground">No IDs assigned to {person.name}</h4>
               <p className="text-xs text-foreground-muted mt-1">
-                {isAdmin
-                  ? 'Assign IDs like 2, 4, 50 to track daily clip counts.'
-                  : 'No tracking IDs assigned by admin.'}
+                Assign IDs like 30001, 30002, 50 to track daily clip counts.
               </p>
               {isAdmin && (
                 <Button
@@ -310,7 +355,8 @@ export default function PersonDetailPage() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs uppercase tracking-wider text-foreground-subtle">
-                    <th className="pb-3 font-semibold">ID Value</th>
+                    <th className="pb-3 font-semibold">Assigned ID</th>
+                    <th className="pb-3 font-semibold text-right">Cumulative Clips</th>
                     <th className="pb-3 font-semibold">Notes / Purpose</th>
                     <th className="pb-3 font-semibold">Assigned Date</th>
                     {isAdmin && <th className="pb-3 font-semibold text-right">Admin Actions</th>}
@@ -324,8 +370,12 @@ export default function PersonDetailPage() {
                           ID {idItem.id_value}
                         </span>
                       </td>
+                      <td className="py-3.5 text-right font-mono font-extrabold text-accent-purple text-base">
+                        {formatNumber(idItem.total_clips || 0)}{' '}
+                        <span className="text-xs font-normal text-foreground-muted">clips</span>
+                      </td>
                       <td className="py-3.5 text-foreground-muted text-xs">
-                        {idItem.notes || <span className="text-foreground-subtle italic">No notes</span>}
+                        {idItem.notes || <span className="text-foreground-subtle italic">-</span>}
                       </td>
                       <td className="py-3.5 text-foreground-subtle text-xs">
                         {formatDate(idItem.created_at, 'dd MMM yyyy')}
@@ -355,22 +405,33 @@ export default function PersonDetailPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border font-bold">
+                    <td className="pt-4 text-xs uppercase tracking-wider text-foreground-muted">
+                      Total Output Across All {person.assigned_ids.length} IDs:
+                    </td>
+                    <td className="pt-4 text-right text-lg text-accent-purple">
+                      {formatNumber(person.total_clips || 0)} clips
+                    </td>
+                    <td colSpan={isAdmin ? 3 : 2}></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
         </div>
       </div>
 
-      {/* MODAL: EDIT NAME */}
+      {/* MODAL: EDIT MEMBER PROFILE */}
       <Modal
         isOpen={isEditNameOpen}
         onClose={() => setIsEditNameOpen(false)}
-        title="Edit Person Name"
+        title="Edit Member Profile & Credentials"
       >
         <form onSubmit={handleUpdateName} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
-              Name
+              Member Name
             </label>
             <input
               type="text"
@@ -380,22 +441,45 @@ export default function PersonDetailPage() {
               className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
             />
           </div>
+          <div>
+            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+              Login Email
+            </label>
+            <input
+              type="email"
+              value={emailValue}
+              onChange={(e) => setEmailValue(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+              New Password (Leave blank to keep unchanged)
+            </label>
+            <input
+              type="text"
+              value={passwordValue}
+              onChange={(e) => setPasswordValue(e.target.value)}
+              placeholder="Enter new password if resetting"
+              className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
+            />
+          </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditNameOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" size="sm" isLoading={nameLoading}>
-              Save Name
+              Save Changes
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* MODAL: ADD ID */}
+      {/* MODAL: ASSIGN ID (Single or Bulk) */}
       <Modal
         isOpen={isAddIdOpen}
         onClose={() => setIsAddIdOpen(false)}
-        title={`Assign ID to ${person.name}`}
+        title={`Assign ID(s) to ${person.name}`}
       >
         <form onSubmit={handleAddId} className="space-y-4">
           {idError && (
@@ -403,20 +487,64 @@ export default function PersonDetailPage() {
               {idError}
             </div>
           )}
-          <div>
-            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
-              ID Value (e.g. 2, 4, 50, 10)
-            </label>
-            <input
-              type="text"
-              required
-              autoFocus
-              value={idValue}
-              onChange={(e) => setIdValue(e.target.value)}
-              placeholder="e.g. 50"
-              className="w-full px-3.5 py-2.5 text-sm font-mono bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
-            />
+
+          <div className="flex rounded-xl bg-background border border-border p-1">
+            <button
+              type="button"
+              onClick={() => setAssignMode('single')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                assignMode === 'single'
+                  ? 'bg-accent-purple text-white shadow-sm'
+                  : 'text-foreground-muted hover:text-foreground'
+              }`}
+            >
+              Single ID
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssignMode('bulk')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                assignMode === 'bulk'
+                  ? 'bg-accent-purple text-white shadow-sm'
+                  : 'text-foreground-muted hover:text-foreground'
+              }`}
+            >
+              Bulk Add (10, 20+ IDs)
+            </button>
           </div>
+
+          {assignMode === 'single' ? (
+            <div>
+              <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+                ID Value (e.g. 30001, 2, 4, 50)
+              </label>
+              <input
+                type="text"
+                required
+                autoFocus
+                value={idValue}
+                onChange={(e) => setIdValue(e.target.value)}
+                placeholder="e.g. 30001"
+                className="w-full px-3.5 py-2.5 text-sm font-mono bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+                Bulk IDs (Paste comma or newline separated IDs)
+              </label>
+              <textarea
+                rows={4}
+                required
+                autoFocus
+                value={bulkIdsText}
+                onChange={(e) => setBulkIdsText(e.target.value)}
+                placeholder="30001, 30002, 30003&#10;30004&#10;30005"
+                className="w-full px-3.5 py-2.5 text-sm font-mono bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
               Notes (Optional)
@@ -425,16 +553,17 @@ export default function PersonDetailPage() {
               type="text"
               value={idNotes}
               onChange={(e) => setIdNotes(e.target.value)}
-              placeholder="e.g. Primary, Shift 2"
+              placeholder="e.g. Primary line, Shift B"
               className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
             />
           </div>
+
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setIsAddIdOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" size="sm" isLoading={addIdLoading}>
-              Assign ID
+              {assignMode === 'bulk' ? 'Assign All IDs' : 'Assign ID'}
             </Button>
           </div>
         </form>
@@ -481,11 +610,11 @@ export default function PersonDetailPage() {
         </form>
       </Modal>
 
-      {/* MODAL: DELETE PERSON */}
+      {/* MODAL: DELETE MEMBER */}
       <Modal
         isOpen={isDeleteOpen}
         onClose={() => setIsDeleteOpen(false)}
-        title="Delete Person Confirmation"
+        title="Delete Member Confirmation"
       >
         <div className="space-y-4">
           <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 flex items-start gap-2.5">
@@ -500,7 +629,7 @@ export default function PersonDetailPage() {
               Cancel
             </Button>
             <Button type="button" variant="danger" size="sm" onClick={handleDeletePerson} isLoading={deleteLoading}>
-              Delete Person
+              Delete Member
             </Button>
           </div>
         </div>

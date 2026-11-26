@@ -15,6 +15,7 @@ import {
 } from '@/lib/services/clipService';
 import type { PersonWithIds } from '@/types/database';
 import { useAuth } from '@/lib/useAuth';
+import { formatNumber } from '@/lib/utils';
 import {
   Users,
   Plus,
@@ -28,7 +29,9 @@ import {
   AlertTriangle,
   UserCheck,
   Lock,
-  ShieldAlert,
+  Mail,
+  Key,
+  Layers,
 } from 'lucide-react';
 
 export default function PeoplePage() {
@@ -37,21 +40,29 @@ export default function PeoplePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Modals state
+  // Add Member Modal State (Name + Email + Password)
   const [isAddPersonOpen, setIsAddPersonOpen] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
+  const [newPersonEmail, setNewPersonEmail] = useState('');
+  const [newPersonPassword, setNewPersonPassword] = useState('');
   const [addPersonLoading, setAddPersonLoading] = useState(false);
 
+  // Edit Member Modal State
   const [editPerson, setEditPerson] = useState<PersonWithIds | null>(null);
   const [editPersonName, setEditPersonName] = useState('');
+  const [editPersonEmail, setEditPersonEmail] = useState('');
+  const [editPersonPassword, setEditPersonPassword] = useState('');
   const [editPersonLoading, setEditPersonLoading] = useState(false);
 
+  // Delete Member Modal State
   const [deletePersonTarget, setDeletePersonTarget] = useState<PersonWithIds | null>(null);
   const [deletePersonLoading, setDeletePersonLoading] = useState(false);
 
-  // Quick Add ID Modal
+  // Assign ID Modal (Single or Bulk 10-20 IDs)
   const [targetPersonForId, setTargetPersonForId] = useState<PersonWithIds | null>(null);
+  const [assignMode, setAssignMode] = useState<'single' | 'bulk'>('single');
   const [newIdValue, setNewIdValue] = useState('');
+  const [bulkIdsText, setBulkIdsText] = useState('');
   const [newIdNotes, setNewIdNotes] = useState('');
   const [addIdLoading, setAddIdLoading] = useState(false);
   const [idError, setIdError] = useState<string | null>(null);
@@ -79,44 +90,55 @@ export default function PeoplePage() {
     setTimeout(() => setFeedbackMessage(null), 3500);
   };
 
-  // 1. Add Person (Admin only)
+  // 1. Add Person / Member (Admin only)
   const handleAddPerson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) {
-      alert('Only Admins can add people');
+      alert('Only Admins can add members');
       return;
     }
     if (!newPersonName.trim()) return;
     setAddPersonLoading(true);
     try {
-      await createPerson(newPersonName.trim());
+      await createPerson(
+        newPersonName.trim(),
+        newPersonEmail.trim() || undefined,
+        newPersonPassword.trim() || undefined
+      );
       setNewPersonName('');
+      setNewPersonEmail('');
+      setNewPersonPassword('');
       setIsAddPersonOpen(false);
-      showToast('Person added successfully');
+      showToast('Member created successfully. They can now log in.');
       loadPeople();
     } catch (err: any) {
-      alert(err.message || 'Failed to add person');
+      alert(err.message || 'Failed to add member');
     } finally {
       setAddPersonLoading(false);
     }
   };
 
-  // 2. Edit Person (Admin only)
+  // 2. Edit Person / Member (Admin only)
   const handleEditPerson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) {
-      alert('Only Admins can edit people');
+      alert('Only Admins can edit members');
       return;
     }
     if (!editPerson || !editPersonName.trim()) return;
     setEditPersonLoading(true);
     try {
-      await updatePerson(editPerson.id, editPersonName.trim());
+      await updatePerson(
+        editPerson.id,
+        editPersonName.trim(),
+        editPersonEmail.trim() || undefined,
+        editPersonPassword.trim() || undefined
+      );
       setEditPerson(null);
-      showToast('Person updated successfully');
+      showToast('Member updated successfully');
       loadPeople();
     } catch (err: any) {
-      alert(err.message || 'Failed to update person');
+      alert(err.message || 'Failed to update member');
     } finally {
       setEditPersonLoading(false);
     }
@@ -125,7 +147,7 @@ export default function PeoplePage() {
   // 3. Delete Person (Admin only)
   const handleDeletePerson = async () => {
     if (!isAdmin) {
-      alert('Only Admins can delete people');
+      alert('Only Admins can delete members');
       return;
     }
     if (!deletePersonTarget) return;
@@ -133,31 +155,58 @@ export default function PeoplePage() {
     try {
       await deletePerson(deletePersonTarget.id);
       setDeletePersonTarget(null);
-      showToast('Person and assigned IDs deleted');
+      showToast('Member and assigned IDs deleted');
       loadPeople();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete person');
+      alert(err.message || 'Failed to delete member');
     } finally {
       setDeletePersonLoading(false);
     }
   };
 
-  // 4. Quick Add ID (Admin only)
+  // 4. Assign ID (Single or Bulk)
   const handleAddId = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) {
       alert('Only Admins can assign IDs');
       return;
     }
-    if (!targetPersonForId || !newIdValue.trim()) return;
+    if (!targetPersonForId) return;
+
     setAddIdLoading(true);
     setIdError(null);
     try {
-      await createAssignedId(targetPersonForId.id, newIdValue.trim(), newIdNotes.trim() || null);
+      if (assignMode === 'bulk') {
+        if (!bulkIdsText.trim()) {
+          setIdError('Please enter at least one ID');
+          setAddIdLoading(false);
+          return;
+        }
+        await createAssignedId(
+          targetPersonForId.id,
+          '',
+          newIdNotes.trim() || null,
+          bulkIdsText.trim()
+        );
+        showToast(`Bulk IDs assigned to ${targetPersonForId.name}`);
+      } else {
+        if (!newIdValue.trim()) {
+          setIdError('Please enter an ID value');
+          setAddIdLoading(false);
+          return;
+        }
+        await createAssignedId(
+          targetPersonForId.id,
+          newIdValue.trim(),
+          newIdNotes.trim() || null
+        );
+        showToast(`ID ${newIdValue.trim()} assigned to ${targetPersonForId.name}`);
+      }
+
       setNewIdValue('');
+      setBulkIdsText('');
       setNewIdNotes('');
       setTargetPersonForId(null);
-      showToast(`ID ${newIdValue.trim()} assigned to ${targetPersonForId.name}`);
       loadPeople();
     } catch (err: any) {
       setIdError(err.message || 'Failed to assign ID');
@@ -187,16 +236,16 @@ export default function PeoplePage() {
   // Filter people by search
   const filteredPeople = people.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (p.email && p.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
     p.assigned_ids.some((id) => id.id_value.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
     <AppShell
-      title="People & Assigned IDs"
-      subtitle="View tracked individuals and their assigned clip tracking IDs"
+      title="People & Members Management"
+      subtitle="Admin assigns unlimited IDs to members and tracks clip volume per ID"
     >
       <div className="space-y-6 pb-12">
-        {/* Toast Feedback */}
         {feedbackMessage && (
           <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl bg-accent-green text-white font-medium text-sm shadow-xl flex items-center gap-2 animate-fade-in">
             <UserCheck className="w-4 h-4" />
@@ -204,20 +253,20 @@ export default function PeoplePage() {
           </div>
         )}
 
-        {/* User Permission Banner for Regular Members */}
+        {/* Member View Mode Banner */}
         {!isAdmin && (
           <div className="p-3.5 rounded-xl bg-accent-blue/10 border border-accent-blue/20 text-xs text-accent-blue flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 text-accent-blue shrink-0" />
               <span>
-                <strong>Member View Mode:</strong> You can view all people and their assigned IDs. Creating, editing, or deleting people is reserved for Admins.
+                <strong>Member View Mode:</strong> You can view all team members and their assigned IDs. Administrator assigns IDs and manages accounts.
               </span>
             </div>
             <span className="font-mono text-[11px] bg-accent-blue/20 px-2 py-0.5 rounded">Read Only</span>
           </div>
         )}
 
-        {/* Action Bar: Search & Add Person */}
+        {/* Action Bar: Search & Add Member */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card border border-border p-4 md:p-5 rounded-2xl shadow-lg">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
@@ -225,14 +274,14 @@ export default function PeoplePage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by person name or assigned ID (e.g. Rahul, 50)..."
+              placeholder="Search by name, email, or ID (e.g. Rahul, 30001)..."
               className="w-full pl-10 pr-4 py-2 text-sm bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
             />
           </div>
 
           <div className="flex items-center gap-3">
             <div className="text-xs text-foreground-muted hidden md:block">
-              Total: <span className="font-bold text-foreground">{people.length}</span> people
+              Total: <span className="font-bold text-foreground">{people.length}</span> members
             </div>
             {isAdmin && (
               <Button
@@ -240,11 +289,13 @@ export default function PeoplePage() {
                 size="md"
                 onClick={() => {
                   setNewPersonName('');
+                  setNewPersonEmail('');
+                  setNewPersonPassword('');
                   setIsAddPersonOpen(true);
                 }}
                 leftIcon={<Plus className="w-4 h-4" />}
               >
-                Add New Person
+                Add New Member
               </Button>
             )}
           </div>
@@ -260,11 +311,11 @@ export default function PeoplePage() {
         ) : filteredPeople.length === 0 ? (
           <div className="p-12 text-center rounded-2xl bg-card border border-dashed border-border shadow-md">
             <Users className="w-12 h-12 text-foreground-subtle mx-auto mb-3 opacity-50" />
-            <h3 className="text-base font-bold text-foreground">No people found</h3>
+            <h3 className="text-base font-bold text-foreground">No members found</h3>
             <p className="text-xs text-foreground-muted mt-1 max-w-sm mx-auto">
               {searchQuery
-                ? `No people or IDs match "${searchQuery}". Try a different keyword.`
-                : 'No people registered yet.'}
+                ? `No members or IDs match "${searchQuery}".`
+                : 'Get started by creating your first team member and assign IDs to them.'}
             </p>
             {isAdmin && !searchQuery && (
               <Button
@@ -274,7 +325,7 @@ export default function PeoplePage() {
                 onClick={() => setIsAddPersonOpen(true)}
                 leftIcon={<Plus className="w-4 h-4" />}
               >
-                Add First Person
+                Add First Member
               </Button>
             )}
           </div>
@@ -286,10 +337,10 @@ export default function PeoplePage() {
                 className="rounded-2xl bg-card border border-border p-5 flex flex-col justify-between hover:border-accent-purple/40 transition-all shadow-xl group"
               >
                 <div>
-                  {/* Person Header */}
-                  <div className="flex items-start justify-between gap-3 mb-4">
+                  {/* Member Header */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-purple/20 to-accent-blue/20 border border-accent-purple/30 flex items-center justify-center font-bold text-accent-purple text-base">
+                      <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent-purple/20 to-accent-blue/20 border border-accent-purple/30 flex items-center justify-center font-bold text-accent-purple text-lg shadow-sm">
                         {person.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
@@ -300,10 +351,14 @@ export default function PeoplePage() {
                           <span>{person.name}</span>
                           <ExternalLink className="w-3.5 h-3.5 text-foreground-subtle opacity-0 group-hover:opacity-100 transition-opacity" />
                         </Link>
-                        <span className="text-xs text-foreground-muted">
-                          {person.assigned_ids.length} Assigned ID
-                          {person.assigned_ids.length === 1 ? '' : 's'}
-                        </span>
+                        {person.email ? (
+                          <div className="text-xs text-foreground-muted flex items-center gap-1 font-mono">
+                            <Mail className="w-3 h-3 text-foreground-subtle" />
+                            {person.email}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-foreground-subtle italic">No login email set</div>
+                        )}
                       </div>
                     </div>
 
@@ -314,16 +369,18 @@ export default function PeoplePage() {
                           onClick={() => {
                             setEditPerson(person);
                             setEditPersonName(person.name);
+                            setEditPersonEmail(person.email || '');
+                            setEditPersonPassword('');
                           }}
                           className="p-1.5 rounded-lg text-foreground-muted hover:text-foreground hover:bg-background border border-transparent hover:border-border transition-colors"
-                          title="Edit person name (Admin only)"
+                          title="Edit member details & password"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setDeletePersonTarget(person)}
                           className="p-1.5 rounded-lg text-foreground-muted hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-colors"
-                          title="Delete person (Admin only)"
+                          title="Delete member"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -331,25 +388,37 @@ export default function PeoplePage() {
                     )}
                   </div>
 
-                  {/* Assigned IDs List */}
+                  {/* Cumulative Total Clips Badge */}
+                  <div className="mb-3 px-3 py-2 rounded-xl bg-background border border-border/80 flex items-center justify-between text-xs">
+                    <span className="text-foreground-muted font-medium">Total Production:</span>
+                    <span className="font-extrabold text-accent-purple text-sm">
+                      {formatNumber(person.total_clips || 0)}{' '}
+                      <span className="text-xs font-normal text-foreground-muted">clips</span>
+                    </span>
+                  </div>
+
+                  {/* Assigned IDs List with Clips per ID */}
+                  {/* "admin dekh skta hai user kitna id asgn hua hai and kis id pe kitne clips kiye hai example 30001 - 10000 clips waise h sare" */}
                   <div className="border-t border-border/80 pt-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold uppercase tracking-wider text-foreground-subtle flex items-center gap-1">
                         <Tag className="w-3 h-3 text-accent-purple" />
-                        Assigned IDs
+                        Assigned IDs ({person.assigned_ids.length})
                       </span>
                       {isAdmin && (
                         <button
                           onClick={() => {
                             setTargetPersonForId(person);
+                            setAssignMode('single');
                             setNewIdValue('');
+                            setBulkIdsText('');
                             setNewIdNotes('');
                             setIdError(null);
                           }}
                           className="text-xs font-semibold text-accent-purple hover:text-accent-purple-hover flex items-center gap-1 hover:underline"
                         >
                           <PlusCircle className="w-3.5 h-3.5" />
-                          Assign ID
+                          Assign ID(s)
                         </button>
                       )}
                     </div>
@@ -359,28 +428,37 @@ export default function PeoplePage() {
                         No IDs assigned yet.
                       </p>
                     ) : (
-                      <div className="flex flex-wrap gap-2 pt-1">
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {person.assigned_ids.map((idItem) => (
                           <div
                             key={idItem.id}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-background border border-border text-xs font-mono font-medium text-foreground hover:border-accent-purple/50 group/tag transition-all"
-                            title={idItem.notes ? `Note: ${idItem.notes}` : undefined}
+                            className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-background border border-border text-xs hover:border-accent-purple/40 transition-all"
                           >
-                            <span className="text-accent-blue font-bold">ID {idItem.id_value}</span>
-                            {idItem.notes && (
-                              <span className="text-[10px] text-foreground-subtle max-w-[80px] truncate">
-                                ({idItem.notes})
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-mono font-bold text-accent-blue bg-accent-blue/10 px-2 py-0.5 rounded text-xs shrink-0">
+                                ID {idItem.id_value}
                               </span>
-                            )}
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDeleteId(idItem.id, idItem.id_value, person.name)}
-                                className="text-foreground-subtle hover:text-red-400 opacity-60 hover:opacity-100 transition-opacity ml-0.5"
-                                title="Delete this assigned ID (Admin only)"
-                              >
-                                &times;
-                              </button>
-                            )}
+                              {idItem.notes && (
+                                <span className="text-[11px] text-foreground-subtle truncate max-w-[100px]">
+                                  {idItem.notes}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-bold text-accent-purple font-mono">
+                                {formatNumber(idItem.total_clips || 0)} clips
+                              </span>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleDeleteId(idItem.id, idItem.id_value, person.name)}
+                                  className="text-foreground-subtle hover:text-red-400 opacity-60 hover:opacity-100 transition-opacity ml-1"
+                                  title="Delete this assigned ID"
+                                >
+                                  &times;
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -394,7 +472,7 @@ export default function PeoplePage() {
                     href={`/people/${person.id}`}
                     className="text-xs font-semibold text-accent-purple hover:underline flex items-center gap-1"
                   >
-                    View Details & History &rarr;
+                    View History & IDs &rarr;
                   </Link>
 
                   <Link
@@ -410,17 +488,17 @@ export default function PeoplePage() {
         )}
       </div>
 
-      {/* MODAL: ADD PERSON (Admin Only) */}
+      {/* MODAL: ADD MEMBER WITH LOGIN CREDENTIALS (Admin Only) */}
       <Modal
         isOpen={isAddPersonOpen}
         onClose={() => setIsAddPersonOpen(false)}
-        title="Add New Person"
-        description="Admin Action: Create a new person to track clip production"
+        title="Add New Member Account"
+        description="Admin Action: Create a member profile with login credentials"
       >
         <form onSubmit={handleAddPerson} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
-              Person Full Name
+              Member Full Name
             </label>
             <input
               type="text"
@@ -428,9 +506,46 @@ export default function PeoplePage() {
               autoFocus
               value={newPersonName}
               onChange={(e) => setNewPersonName(e.target.value)}
-              placeholder="e.g. Rahul, Amit, Priya"
+              placeholder="e.g. Rahul Sharma"
               className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+              Login Email Address
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
+              <input
+                type="email"
+                required
+                value={newPersonEmail}
+                onChange={(e) => setNewPersonEmail(e.target.value)}
+                placeholder="rahul@denseai.com"
+                className="w-full pl-10 pr-4 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
+              />
+            </div>
+            <p className="text-[11px] text-foreground-subtle mt-1">
+              Member will use this email to log in and record clips.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+              Login Password
+            </label>
+            <div className="relative">
+              <Key className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
+              <input
+                type="text"
+                required
+                value={newPersonPassword}
+                onChange={(e) => setNewPersonPassword(e.target.value)}
+                placeholder="e.g. rahul123"
+                className="w-full pl-10 pr-4 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
+              />
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">
@@ -448,30 +563,54 @@ export default function PeoplePage() {
               size="sm"
               isLoading={addPersonLoading}
             >
-              Create Person
+              Create Member
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* MODAL: EDIT PERSON (Admin Only) */}
+      {/* MODAL: EDIT MEMBER (Admin Only) */}
       <Modal
         isOpen={!!editPerson}
         onClose={() => setEditPerson(null)}
-        title="Edit Person Name"
-        description="Admin Action: Update the name of this tracked individual"
+        title="Edit Member Account"
+        description="Admin Action: Update member details or reset login password"
       >
         <form onSubmit={handleEditPerson} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
-              Person Name
+              Member Name
             </label>
             <input
               type="text"
               required
-              autoFocus
               value={editPersonName}
               onChange={(e) => setEditPersonName(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+              Login Email
+            </label>
+            <input
+              type="email"
+              value={editPersonEmail}
+              onChange={(e) => setEditPersonEmail(e.target.value)}
+              className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+              New Password (Leave blank to keep unchanged)
+            </label>
+            <input
+              type="text"
+              value={editPersonPassword}
+              onChange={(e) => setEditPersonPassword(e.target.value)}
+              placeholder="Enter new password if resetting"
               className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground focus:outline-none focus:border-accent-purple"
             />
           </div>
@@ -497,21 +636,18 @@ export default function PeoplePage() {
         </form>
       </Modal>
 
-      {/* MODAL: DELETE PERSON CONFIRMATION (Admin Only) */}
+      {/* MODAL: DELETE MEMBER (Admin Only) */}
       <Modal
         isOpen={!!deletePersonTarget}
         onClose={() => setDeletePersonTarget(null)}
-        title="Delete Person Confirmation"
-        description="Warning: this action is irreversible"
+        title="Delete Member Confirmation"
       >
         <div className="space-y-4">
           <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 flex items-start gap-2.5">
             <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div>
-              Deleting <strong className="text-white">{deletePersonTarget?.name}</strong> will also
-              permanently delete all of their{' '}
-              <strong>{deletePersonTarget?.assigned_ids.length} assigned IDs</strong> and all historical
-              daily clip records associated with them.
+              Permanently delete <strong className="text-white">{deletePersonTarget?.name}</strong> and all {deletePersonTarget?.assigned_ids.length} assigned IDs?
+              Their login account and all daily clip counts will be erased.
             </div>
           </div>
 
@@ -537,12 +673,13 @@ export default function PeoplePage() {
         </div>
       </Modal>
 
-      {/* MODAL: QUICK ASSIGN ID (Admin Only) */}
+      {/* MODAL: ASSIGN ID (Single or Bulk 10-20 IDs) */}
+      {/* "admin id assign karega bass ek din ke pass 10 20 or jyad bhi kar skt ahai" */}
       <Modal
         isOpen={!!targetPersonForId}
         onClose={() => setTargetPersonForId(null)}
-        title={`Assign ID to ${targetPersonForId?.name}`}
-        description="Admin Action: Assign a unique tracking ID number to this person"
+        title={`Assign ID(s) to ${targetPersonForId?.name}`}
+        description="Assign single or multiple tracking IDs (10, 20 or more) to this member"
       >
         <form onSubmit={handleAddId} className="space-y-4">
           {idError && (
@@ -551,23 +688,69 @@ export default function PeoplePage() {
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
-              Assigned ID Value (e.g. 2, 4, 50, 10, 15)
-            </label>
-            <div className="relative">
-              <Hash className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
-              <input
-                type="text"
+          {/* Mode Switcher */}
+          <div className="flex rounded-xl bg-background border border-border p-1">
+            <button
+              type="button"
+              onClick={() => setAssignMode('single')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                assignMode === 'single'
+                  ? 'bg-accent-purple text-white shadow-sm'
+                  : 'text-foreground-muted hover:text-foreground'
+              }`}
+            >
+              Single ID
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssignMode('bulk')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                assignMode === 'bulk'
+                  ? 'bg-accent-purple text-white shadow-sm'
+                  : 'text-foreground-muted hover:text-foreground'
+              }`}
+            >
+              Bulk Add (10, 20+ IDs)
+            </button>
+          </div>
+
+          {assignMode === 'single' ? (
+            <div>
+              <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+                Assigned ID Value (e.g. 30001, 2, 4, 50)
+              </label>
+              <div className="relative">
+                <Hash className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground-muted" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newIdValue}
+                  onChange={(e) => setNewIdValue(e.target.value)}
+                  placeholder="e.g. 30001"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm font-mono bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
+                Bulk IDs (Paste comma or newline separated IDs)
+              </label>
+              <textarea
+                rows={4}
                 required
                 autoFocus
-                value={newIdValue}
-                onChange={(e) => setNewIdValue(e.target.value)}
-                placeholder="e.g. 2"
-                className="w-full pl-10 pr-4 py-2.5 text-sm font-mono bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
+                value={bulkIdsText}
+                onChange={(e) => setBulkIdsText(e.target.value)}
+                placeholder="30001, 30002, 30003&#10;30004&#10;30005"
+                className="w-full px-3.5 py-2.5 text-sm font-mono bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
               />
+              <p className="text-[11px] text-foreground-subtle mt-1">
+                Enter multiple IDs separated by commas or lines (e.g. assign 10, 20, 50 IDs at once).
+              </p>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-foreground-muted uppercase tracking-wider mb-1.5">
@@ -577,7 +760,7 @@ export default function PeoplePage() {
               type="text"
               value={newIdNotes}
               onChange={(e) => setNewIdNotes(e.target.value)}
-              placeholder="e.g. Primary line, Shift B, Bulk machine"
+              placeholder="e.g. Shift 1, Primary line"
               className="w-full px-3.5 py-2.5 text-sm bg-background border border-border rounded-xl text-foreground placeholder:text-foreground-subtle focus:outline-none focus:border-accent-purple"
             />
           </div>
@@ -597,7 +780,7 @@ export default function PeoplePage() {
               size="sm"
               isLoading={addIdLoading}
             >
-              Assign ID
+              {assignMode === 'bulk' ? 'Assign All IDs' : 'Assign ID'}
             </Button>
           </div>
         </form>

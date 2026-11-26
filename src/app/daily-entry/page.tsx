@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 export default function DailyEntryPage() {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [people, setPeople] = useState<PersonWithIds[]>([]);
   const [entries, setEntries] = useState<ClipEntryDetail[]>([]);
@@ -65,15 +65,24 @@ export default function DailyEntryPage() {
       try {
         const data = await getPeopleWithIds();
         setPeople(data);
-        if (data.length > 0 && !selectedPersonId) {
-          setSelectedPersonId(data[0].id);
+        if (data.length > 0) {
+          if (!isAdmin && user?.email) {
+            const myPerson = data.find((p) => p.email?.toLowerCase() === user.email.toLowerCase());
+            if (myPerson) {
+              setSelectedPersonId(myPerson.id);
+              return;
+            }
+          }
+          if (!selectedPersonId) {
+            setSelectedPersonId(data[0].id);
+          }
         }
       } catch (err) {
         console.error('Failed to load people:', err);
       }
     };
     fetchPeople();
-  }, []);
+  }, [user, isAdmin]);
 
   const currentPerson = useMemo(() => {
     return people.find((p) => p.id === selectedPersonId) || null;

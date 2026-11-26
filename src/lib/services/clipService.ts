@@ -11,7 +11,7 @@ export function isSupabaseConfigured(): boolean {
   return true;
 }
 
-// 1. Get People
+// 1. Get People (with assigned IDs & total clips)
 export async function getPeople(): Promise<Person[]> {
   const res = await fetch('/api/people');
   if (!res.ok) {
@@ -22,7 +22,7 @@ export async function getPeople(): Promise<Person[]> {
   return data.people || [];
 }
 
-// 2. Get People with IDs
+// 2. Get People with IDs & total clips
 export async function getPeopleWithIds(): Promise<PersonWithIds[]> {
   const res = await fetch('/api/people');
   if (!res.ok) {
@@ -45,31 +45,31 @@ export async function getPersonById(personId: string): Promise<PersonWithIds | n
   return data.person || null;
 }
 
-// 4. Create Person (Admin only)
-export async function createPerson(name: string): Promise<Person> {
+// 4. Create Member with Email & Password (Admin only)
+export async function createPerson(name: string, email?: string, password?: string): Promise<Person> {
   const res = await fetch('/api/people', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, email, password }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to create person');
+    throw new Error(err.error || 'Failed to create member');
   }
   const data = await res.json();
   return data.person;
 }
 
 // 5. Update Person (Admin only)
-export async function updatePerson(id: string, name: string): Promise<Person> {
+export async function updatePerson(id: string, name: string, email?: string, password?: string): Promise<Person> {
   const res = await fetch(`/api/people/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, email, password }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to update person');
+    throw new Error(err.error || 'Failed to update member');
   }
   const data = await res.json();
   return data.person;
@@ -80,27 +80,32 @@ export async function deletePerson(id: string): Promise<void> {
   const res = await fetch(`/api/people/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to delete person');
+    throw new Error(err.error || 'Failed to delete member');
   }
 }
 
-// 7. Create Assigned ID (Admin only)
+// 7. Create Assigned ID (supports single ID or bulk multiple IDs)
 export async function createAssignedId(
   personId: string,
   idValue: string,
-  notes?: string | null
-): Promise<AssignedId> {
+  notes?: string | null,
+  bulkIds?: string
+): Promise<any> {
   const res = await fetch('/api/assigned-ids', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ person_id: personId, id_value: idValue, notes }),
+    body: JSON.stringify({
+      person_id: personId,
+      id_value: idValue,
+      notes,
+      bulk_ids: bulkIds,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to assign ID');
   }
-  const data = await res.json();
-  return data.assigned_id;
+  return await res.json();
 }
 
 // 8. Update Assigned ID (Admin only)
@@ -131,7 +136,7 @@ export async function deleteAssignedId(id: string): Promise<void> {
   }
 }
 
-// 10. Get Clip Entries By Date (Both Admin & User)
+// 10. Get Clip Entries By Date
 export async function getClipEntriesByDate(dateString: string): Promise<ClipEntryDetail[]> {
   const res = await fetch(`/api/clip-entries?date=${encodeURIComponent(dateString)}`);
   if (!res.ok) {
@@ -170,7 +175,7 @@ export async function deleteClipEntry(id: string): Promise<void> {
   }
 }
 
-// 13. Dashboard Data (Both Admin & User)
+// 13. Dashboard Data
 export async function getDashboardData() {
   const res = await fetch('/api/dashboard');
   if (!res.ok) {
@@ -180,7 +185,7 @@ export async function getDashboardData() {
   return await res.json();
 }
 
-// 14. Monthly Report (Both Admin & User)
+// 14. Monthly Report
 export async function getMonthlyReport(year: number, month: number): Promise<MonthlyReportData> {
   const res = await fetch(`/api/reports?year=${year}&month=${month}`);
   if (!res.ok) {

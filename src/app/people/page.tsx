@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import {
   getPeopleWithIds,
+  peekPeopleCache,
   createPerson,
   updatePerson,
   deletePerson,
@@ -36,9 +37,10 @@ import {
 
 export default function PeoplePage() {
   const { isAdmin } = useAuth();
-  const [people, setPeople] = useState<PersonWithIds[]>([]);
+  const cachedPeople = peekPeopleCache();
+  const [people, setPeople] = useState<PersonWithIds[]>(cachedPeople || []);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedPeople);
 
   // Add Member Modal State (Name + Email + Password)
   const [isAddPersonOpen, setIsAddPersonOpen] = useState(false);
@@ -69,10 +71,10 @@ export default function PeoplePage() {
 
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  const loadPeople = async () => {
-    setLoading(true);
+  const loadPeople = async (force = false) => {
+    if (!peekPeopleCache() || force) setLoading(true);
     try {
-      const data = await getPeopleWithIds();
+      const data = await getPeopleWithIds(force);
       setPeople(data);
     } catch (err) {
       console.error('Failed to load people:', err);
@@ -82,7 +84,7 @@ export default function PeoplePage() {
   };
 
   useEffect(() => {
-    loadPeople();
+    loadPeople(false);
   }, []);
 
   const showToast = (msg: string) => {

@@ -4,19 +4,20 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scissors, Lock, Mail, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { useAuth } from '@/lib/useAuth';
+import { clearClientCache } from '@/lib/services/clipService';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setUserDirect } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    setSuccessMessage(null);
     setIsLoading(true);
 
     try {
@@ -34,12 +35,10 @@ export default function LoginPage() {
         return;
       }
 
-      setSuccessMessage('Login successful! Redirecting to dashboard...');
-
-      setTimeout(() => {
-        router.push('/dashboard');
-        router.refresh();
-      }, 500);
+      clearClientCache();
+      setUserDirect(data.user);
+      router.push('/dashboard');
+      router.refresh();
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected authentication error occurred.');
       setIsLoading(false);
@@ -48,12 +47,10 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Decorative Ambient Glows */}
       <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-accent-purple/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-accent-blue/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
-        {/* Brand Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-accent-purple to-accent-blue shadow-xl shadow-accent-purple/20 mb-4 border border-accent-purple/30">
             <Scissors className="w-8 h-8 text-white" />
@@ -66,7 +63,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Login Card */}
         <div className="bg-card border border-border rounded-3xl p-7 md:p-8 shadow-2xl backdrop-blur-xl">
           <div className="mb-6 pb-4 border-b border-border/80 flex items-center justify-between">
             <span className="text-sm font-semibold text-foreground">Sign In</span>
@@ -80,13 +76,6 @@ export default function LoginPage() {
             <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <div className="leading-relaxed">{errorMessage}</div>
-            </div>
-          )}
-
-          {successMessage && (
-            <div className="mb-5 p-3.5 rounded-xl bg-accent-green/10 border border-accent-green/30 text-xs text-accent-green flex items-start gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-accent-green shrink-0 mt-0.5" />
-              <div className="leading-relaxed">{successMessage}</div>
             </div>
           )}
 
@@ -142,7 +131,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Clean Footer */}
         <div className="text-center mt-6 text-xs text-foreground-subtle">
           ClipTrack System &bull; DenseAI Internal Portal
         </div>

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/Button';
-import { getMonthlyReport } from '@/lib/services/clipService';
+import { getMonthlyReport, peekMonthlyReportCache } from '@/lib/services/clipService';
 import type { MonthlyReportData } from '@/types/database';
 import { formatNumber, convertToCSV, downloadCSV } from '@/lib/utils';
 import {
@@ -11,12 +11,8 @@ import {
   Download,
   Calendar,
   Users,
-  Hash,
-  Layers,
-  ChevronDown,
   RefreshCw,
   PieChart as PieChartIcon,
-  Table as TableIcon,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -31,7 +27,7 @@ import {
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 export default function MonthlyReportsPage() {
@@ -39,16 +35,23 @@ export default function MonthlyReportsPage() {
   const [selectedYear, setSelectedYear] = useState<number>(currentDate.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(currentDate.getMonth() + 1);
 
-  const [report, setReport] = useState<MonthlyReportData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [report, setReport] = useState<MonthlyReportData | null>(() =>
+    peekMonthlyReportCache(currentDate.getFullYear(), currentDate.getMonth() + 1)
+  );
+  const [loading, setLoading] = useState(!report);
 
-  // Available year options (e.g. from 2024 to 2030)
   const years = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
 
-  const loadReport = async () => {
-    setLoading(true);
+  const loadReport = async (force = false) => {
+    const cached = !force ? peekMonthlyReportCache(selectedYear, selectedMonth) : null;
+    if (cached) {
+      setReport(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
-      const data = await getMonthlyReport(selectedYear, selectedMonth);
+      const data = await getMonthlyReport(selectedYear, selectedMonth, force);
       setReport(data);
     } catch (err) {
       console.error('Failed to load monthly report:', err);
@@ -58,14 +61,10 @@ export default function MonthlyReportsPage() {
   };
 
   useEffect(() => {
-    loadReport();
+    loadReport(false);
   }, [selectedYear, selectedMonth]);
 
-  // =========================================================================
-  // CSV EXPORT HANDLERS
-  // =========================================================================
-
-  // 1. Export Complete Monthly Report (Every Entry with details)
+  // CSV Export Handlers
   const handleExportCompleteReport = () => {
     if (!report) return;
     const headers = ['Date', 'Person Name', 'Assigned ID', 'Notes', 'Clips Count', 'Entry Created At'];
@@ -81,7 +80,6 @@ export default function MonthlyReportsPage() {
     downloadCSV(`ClipTrack_Complete_${report.year}_${String(report.month).padStart(2, '0')}.csv`, csv);
   };
 
-  // 2. Export Person-wise Summary
   const handleExportPersonReport = () => {
     if (!report) return;
     const headers = ['Person Name', 'Total Assigned IDs', 'Total Clips Produced', '% of Monthly Total'];
@@ -97,7 +95,6 @@ export default function MonthlyReportsPage() {
     downloadCSV(`ClipTrack_Person_Summary_${report.year}_${String(report.month).padStart(2, '0')}.csv`, csv);
   };
 
-  // 3. Export ID-wise Summary
   const handleExportIdReport = () => {
     if (!report) return;
     const headers = ['Assigned ID', 'Person Name', 'Notes', 'Total Clips'];
@@ -111,7 +108,6 @@ export default function MonthlyReportsPage() {
     downloadCSV(`ClipTrack_ID_Summary_${report.year}_${String(report.month).padStart(2, '0')}.csv`, csv);
   };
 
-  // 4. Export Date-wise Daily Breakdown
   const handleExportDateReport = () => {
     if (!report) return;
     const headers = ['Date', 'Day of Week', 'Total Daily Clips'];
@@ -129,7 +125,7 @@ export default function MonthlyReportsPage() {
   return (
     <AppShell
       title="Monthly Reports & Analytics"
-      subtitle="Comprehensive monthly clip aggregations, person-wise & ID-wise breakdowns, and CSV export"
+      subtitle="Monthly clip aggregations, person-wise & ID-wise breakdowns, and CSV exports"
     >
       <div className="space-y-8 pb-12">
         {/* Month & Year Selection Bar with Export Buttons */}
@@ -140,7 +136,6 @@ export default function MonthlyReportsPage() {
               Report Period:
             </span>
 
-            {/* Month Select */}
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
@@ -153,7 +148,6 @@ export default function MonthlyReportsPage() {
               ))}
             </select>
 
-            {/* Year Select */}
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
@@ -169,7 +163,7 @@ export default function MonthlyReportsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={loadReport}
+              onClick={() => loadReport(true)}
               isLoading={loading}
               leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
             >
@@ -177,7 +171,6 @@ export default function MonthlyReportsPage() {
             </Button>
           </div>
 
-          {/* Export CSV Dropdown / Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
@@ -295,7 +288,12 @@ export default function MonthlyReportsPage() {
                       fontSize: '12px',
                     }}
                   />
-                  <Bar dataKey="clips" name="Total Clips" radius={[8, 8, 0, 0]}>
+                  <Bar
+                    dataKey="clips"
+                    name="Total Clips"
+                    radius={[8, 8, 0, 0]}
+                    isAnimationActive={false}
+                  >
                     {report.person_summaries.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
@@ -309,7 +307,7 @@ export default function MonthlyReportsPage() {
           </div>
         )}
 
-        {/* SECTION 5 REQUIREMENT: Detailed Person & ID Breakdown */}
+        {/* Detailed Person & ID Breakdown */}
         <div className="p-6 rounded-2xl bg-card border border-border shadow-xl">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -339,7 +337,6 @@ export default function MonthlyReportsPage() {
                   className="rounded-2xl bg-background border border-border p-5 flex flex-col justify-between shadow-md hover:border-accent-purple/40 transition-all"
                 >
                   <div>
-                    {/* Person Header */}
                     <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-accent-purple/20 border border-accent-purple/30 flex items-center justify-center font-bold text-accent-purple text-sm">
@@ -366,7 +363,6 @@ export default function MonthlyReportsPage() {
                       </div>
                     </div>
 
-                    {/* ID-wise Breakdown list */}
                     <div className="space-y-2">
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-foreground-subtle">
                         ID Breakdown:
@@ -394,7 +390,6 @@ export default function MonthlyReportsPage() {
                     </div>
                   </div>
 
-                  {/* Summary Footer */}
                   <div className="mt-4 pt-3 border-t border-border flex items-center justify-between text-xs font-bold">
                     <span className="text-foreground-muted">Person Total:</span>
                     <span className="text-accent-purple text-sm">
@@ -403,94 +398,6 @@ export default function MonthlyReportsPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-
-        {/* SECTION 5 REQUIREMENT: Daily Clip Breakdown Table */}
-        <div className="p-6 rounded-2xl bg-card border border-border shadow-xl">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <TableIcon className="w-4 h-4 text-accent-blue" />
-                Daily Clip Breakdown for {report?.month_name}
-              </h3>
-              <p className="text-xs text-foreground-muted">
-                Day-by-day clip counts across the entire month
-              </p>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportDateReport}
-              leftIcon={<Download className="w-3.5 h-3.5" />}
-            >
-              Export Daily Breakdown CSV
-            </Button>
-          </div>
-
-          {!report ? (
-            <div className="p-8 text-center text-foreground-muted">Loading breakdown...</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs uppercase tracking-wider text-foreground-subtle">
-                    <th className="pb-3 font-semibold">Date</th>
-                    <th className="pb-3 font-semibold">Day</th>
-                    <th className="pb-3 font-semibold text-right">Daily Clips</th>
-                    <th className="pb-3 font-semibold text-right">% of Month</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {report.daily_totals.map((day) => {
-                    const percentage =
-                      report.overall_total_clips > 0
-                        ? ((day.total_clips / report.overall_total_clips) * 100).toFixed(1)
-                        : '0.0';
-
-                    return (
-                      <tr
-                        key={day.date}
-                        className={`hover:bg-card-hover transition-colors ${
-                          day.total_clips > 0 ? 'bg-accent-purple/[0.02]' : ''
-                        }`}
-                      >
-                        <td className="py-2.5 font-mono text-xs font-medium text-foreground">
-                          {day.date}
-                        </td>
-                        <td className="py-2.5 text-xs text-foreground-muted">
-                          {day.formatted_date.split('(')[1]?.replace(')', '') || ''}
-                        </td>
-                        <td className="py-2.5 text-right font-extrabold text-sm">
-                          <span
-                            className={
-                              day.total_clips > 0 ? 'text-accent-purple' : 'text-foreground-subtle'
-                            }
-                          >
-                            {formatNumber(day.total_clips)}
-                          </span>
-                        </td>
-                        <td className="py-2.5 text-right text-xs text-foreground-subtle">
-                          {percentage}%
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border font-bold">
-                    <td colSpan={2} className="pt-4 text-xs uppercase tracking-wider text-foreground-muted">
-                      Overall Monthly Total ({report.month_name})
-                    </td>
-                    <td className="pt-4 text-right text-lg text-accent-purple">
-                      {formatNumber(report.overall_total_clips)} clips
-                    </td>
-                    <td className="pt-4 text-right text-xs text-accent-green">100%</td>
-                  </tr>
-                </tfoot>
-              </table>
             </div>
           )}
         </div>

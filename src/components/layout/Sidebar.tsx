@@ -197,6 +197,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={true}
                 onClick={() => onClose()}
                 className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group ${
                   active

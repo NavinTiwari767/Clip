@@ -18,17 +18,12 @@ export async function GET(request: NextRequest) {
 
     const isAdmin = session.role === 'admin';
     let allPeople: { id: string; name: string; email?: string | null }[] = [];
-
-    if (isAdmin) {
-      const allRes = await pool.query('SELECT id, name, email FROM people ORDER BY name ASC');
-      allPeople = allRes.rows;
-    }
-
-    // 1. Resolve which person's history to fetch
     let targetPersonId: string | null = null;
     let targetPersonName = session.full_name || session.email;
 
     if (isAdmin) {
+      const allRes = await pool.query('SELECT id, name, email FROM people ORDER BY name ASC');
+      allPeople = allRes.rows;
       if (requestedPersonId) {
         const match = allPeople.find((p) => p.id === requestedPersonId);
         if (match) {
@@ -41,7 +36,6 @@ export async function GET(request: NextRequest) {
         targetPersonName = allPeople[0].name;
       }
     } else {
-      // Regular user can ONLY view their own person record
       const pRes = await pool.query(
         'SELECT id, name, email FROM people WHERE LOWER(email) = LOWER($1) OR user_id = $2',
         [session.email, session.id]
@@ -64,47 +58,46 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 2. Date range calculation: today down to (requestedDays - 1) days ago
     const today = new Date();
     const startDate = format(subDays(today, requestedDays - 1), 'yyyy-MM-dd');
     const endDate = format(today, 'yyyy-MM-dd');
 
-    // 3. Fetch all assigned IDs for this person with all-time total clips
-    const assignedIdsRes = await pool.query(`
-      SELECT 
-        ai.id AS assigned_id,
-        ai.id_value,
-        ai.notes,
-        COALESCE(SUM(ce.clips), 0)::int AS total_clips
-      FROM assigned_ids ai
-      LEFT JOIN clip_entries ce ON ai.id = ce.assigned_id
-      WHERE ai.person_id = $1
-      GROUP BY ai.id, ai.id_value, ai.notes
-      ORDER BY total_clips DESC, ai.id_value ASC;
-    `, [targetPersonId]);
+    // Run ID summaries and daily entries queries in parallel
+    const [assignedIdsRes, entriesRes] = await Promise.all([
+      pool.query(
+        `SELECT 
+          ai.id AS assigned_id,
+          ai.id_value,
+          ai.notes,
+          COALESCE(SUM(ce.clips), 0)::int AS total_clips
+        FROM assigned_ids ai
+        LEFT JOIN clip_entries ce ON ai.id = ce.assigned_id
+        WHERE ai.person_id = $1
+        GROUP BY ai.id, ai.id_value, ai.notes
+        ORDER BY total_clips DESC, ai.id_value ASC;`,
+        [targetPersonId]
+      ),
+      pool.query(
+        `SELECT 
+          ce.id AS entry_id,
+          ce.entry_date::text AS entry_date,
+          ce.clips,
+          ce.created_at,
+          ce.updated_at,
+          ai.id AS assigned_id,
+          ai.id_value,
+          ai.notes AS id_notes
+        FROM clip_entries ce
+        JOIN assigned_ids ai ON ce.assigned_id = ai.id
+        WHERE ai.person_id = $1
+          AND ce.entry_date >= $2
+          AND ce.entry_date <= $3
+        ORDER BY ce.entry_date DESC, ai.id_value ASC;`,
+        [targetPersonId, startDate, endDate]
+      ),
+    ]);
 
-    // 4. Fetch daily clip entries for this person in the last N days
-    const entriesRes = await pool.query(`
-      SELECT 
-        ce.id AS entry_id,
-        ce.entry_date::text AS entry_date,
-        ce.clips,
-        ce.created_at,
-        ce.updated_at,
-        ai.id AS assigned_id,
-        ai.id_value,
-        ai.notes AS id_notes
-      FROM clip_entries ce
-      JOIN assigned_ids ai ON ce.assigned_id = ai.id
-      WHERE ai.person_id = $1
-        AND ce.entry_date >= $2
-        AND ce.entry_date <= $3
-      ORDER BY ce.entry_date DESC, ai.id_value ASC;
-    `, [targetPersonId, startDate, endDate]);
-
-    // 5. Structure into daily records (day-by-day for the past N days)
     const dailyMap = new Map<string, { total: number; entries: any[] }>();
-
     for (let i = 0; i < requestedDays; i++) {
       const d = format(subDays(today, i), 'yyyy-MM-dd');
       dailyMap.set(d, { total: 0, entries: [] });

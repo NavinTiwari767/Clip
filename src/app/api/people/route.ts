@@ -6,25 +6,33 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const peopleRes = await pool.query('SELECT * FROM people ORDER BY name ASC');
-    
-    // Query assigned_ids along with cumulative clip counts on each ID!
-    const idsRes = await pool.query(`
-      SELECT 
-        ai.id,
-        ai.person_id,
-        ai.id_value,
-        ai.notes,
-        ai.created_at,
-        COALESCE(SUM(ce.clips), 0)::int AS total_clips
-      FROM assigned_ids ai
-      LEFT JOIN clip_entries ce ON ai.id = ce.assigned_id
-      GROUP BY ai.id, ai.person_id, ai.id_value, ai.notes, ai.created_at
-      ORDER BY total_clips DESC, ai.id_value ASC
-    `);
+    const [peopleRes, idsRes] = await Promise.all([
+      pool.query('SELECT * FROM people ORDER BY name ASC'),
+      pool.query(`
+        SELECT 
+          ai.id,
+          ai.person_id,
+          ai.id_value,
+          ai.notes,
+          ai.created_at,
+          COALESCE(SUM(ce.clips), 0)::int AS total_clips
+        FROM assigned_ids ai
+        LEFT JOIN clip_entries ce ON ai.id = ce.assigned_id
+        GROUP BY ai.id, ai.person_id, ai.id_value, ai.notes, ai.created_at
+        ORDER BY total_clips DESC, ai.id_value ASC
+      `),
+    ]);
+
+    const idsByPerson = new Map<string, any[]>();
+    idsRes.rows.forEach((idRow) => {
+      if (!idsByPerson.has(idRow.person_id)) {
+        idsByPerson.set(idRow.person_id, []);
+      }
+      idsByPerson.get(idRow.person_id)!.push(idRow);
+    });
 
     const people = peopleRes.rows.map((p) => {
-      const personIds = idsRes.rows.filter((id) => id.person_id === p.id);
+      const personIds = idsByPerson.get(p.id) || [];
       const personTotalClips = personIds.reduce((sum, idObj) => sum + (idObj.total_clips || 0), 0);
       return {
         ...p,
@@ -59,18 +67,18 @@ export async function POST(request: NextRequest) {
 
     let userId: string | null = null;
 
-    // If email is provided, create or ensure user in app_users
     if (cleanEmail) {
       const userPassword = cleanPassword || 'member123';
       const passwordHash = hashPassword(userPassword);
 
-      const userRes = await pool.query(`
-        INSERT INTO app_users (email, password_hash, role, full_name)
-        VALUES ($1, $2, 'user', $3)
-        ON CONFLICT (email) DO UPDATE 
-        SET full_name = EXCLUDED.full_name
-        RETURNING id;
-      `, [cleanEmail, passwordHash, cleanName]);
+      const userRes = await pool.query(
+        `INSERT INTO app_users (email, password_hash, role, full_name)
+         VALUES ($1, $2, 'user', $3)
+         ON CONFLICT (email) DO UPDATE 
+         SET full_name = EXCLUDED.full_name
+         RETURNING id;`,
+        [cleanEmail, passwordHash, cleanName]
+      );
 
       userId = userRes.rows[0].id;
     }

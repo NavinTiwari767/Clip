@@ -17,37 +17,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Person ID is required' }, { status: 400 });
     }
 
-    // Support bulk ID entry: e.g. "30001, 30002, 30003" or array
+    // Bulk ID assignment in 1 single SQL query
     if (bulk_ids && typeof bulk_ids === 'string') {
-      const idList = bulk_ids
-        .split(/[\n,]/)
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+      const idList = Array.from(
+        new Set(
+          bulk_ids
+            .split(/[\n,]/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0)
+        )
+      );
 
       if (idList.length === 0) {
         return NextResponse.json({ error: 'No valid IDs provided in bulk input' }, { status: 400 });
       }
 
-      const inserted = [];
-      for (const singleId of idList) {
-        try {
-          const res = await pool.query(
-            `INSERT INTO assigned_ids (person_id, id_value, notes)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (person_id, id_value) DO NOTHING
-             RETURNING *;`,
-            [person_id, singleId, notes?.trim() || null]
-          );
-          if (res.rows.length > 0) inserted.push(res.rows[0]);
-        } catch (e) {
-          // ignore duplicate
-        }
-      }
+      const res = await pool.query(
+        `INSERT INTO assigned_ids (person_id, id_value, notes)
+         SELECT $1::uuid, val, $3
+         FROM UNNEST($2::text[]) AS val
+         ON CONFLICT (person_id, id_value) DO NOTHING
+         RETURNING *;`,
+        [person_id, idList, notes?.trim() || null]
+      );
 
       return NextResponse.json({
         success: true,
-        count: inserted.length,
-        assigned_ids: inserted,
+        count: res.rowCount,
+        assigned_ids: res.rows,
       });
     }
 

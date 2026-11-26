@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Members add daily clips for their assigned IDs.
-// Admins ONLY assign IDs and edit/delete existing clips (they do not add new daily clips).
+// POST: Members add daily clips (supports single item or batch array in 1 round-trip!)
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
@@ -64,55 +63,87 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { assigned_id, entry_date, clips } = await request.json();
-    const count = parseInt(clips, 10);
-    if (!assigned_id || !entry_date || isNaN(count) || count < 0) {
+    const body = await request.json();
+    const items: { assigned_id: string; entry_date: string; clips: number }[] = Array.isArray(
+      body.entries
+    )
+      ? body.entries
+      : [{ assigned_id: body.assigned_id, entry_date: body.entry_date, clips: body.clips }];
+
+    const cleaned = items
+      .map((item) => ({
+        assigned_id: item.assigned_id,
+        entry_date: item.entry_date,
+        clips: parseInt(String(item.clips), 10),
+      }))
+      .filter((item) => item.assigned_id && item.entry_date && !isNaN(item.clips) && item.clips >= 0);
+
+    if (cleaned.length === 0) {
       return NextResponse.json(
         { error: 'Valid assigned_id, entry_date and non-negative clips required' },
         { status: 400 }
       );
     }
 
-    // Verify that the assigned_id belongs to the logged-in member
-    const ownershipRes = await pool.query(
-      `SELECT ai.id
-       FROM assigned_ids ai
-       JOIN people p ON ai.person_id = p.id
-       WHERE ai.id = $1 AND (LOWER(p.email) = LOWER($2) OR p.user_id = $3)`,
-      [assigned_id, session.email, session.id]
-    );
+    const assignedIds = Array.from(new Set(cleaned.map((i) => i.assigned_id)));
+    const entryDates = cleaned.map((i) => i.entry_date);
 
-    if (!ownershipRes.rowCount || ownershipRes.rowCount === 0) {
-      return NextResponse.json(
-        { error: 'Permission denied: You can only add clips for your own assigned IDs.' },
-        { status: 403 }
-      );
+    // Single parallel check for ownership AND existing records
+    const [ownedRes, existingRes] = await Promise.all([
+      pool.query(
+        `SELECT ai.id
+         FROM assigned_ids ai
+         JOIN people p ON ai.person_id = p.id
+         WHERE ai.id = ANY($1::uuid[]) AND (LOWER(p.email) = LOWER($2) OR p.user_id = $3)`,
+        [assignedIds, session.email, session.id]
+      ),
+      pool.query(
+        `SELECT assigned_id, entry_date::text
+         FROM clip_entries
+         WHERE assigned_id = ANY($1::uuid[]) AND entry_date = ANY($2::date[])`,
+        [assignedIds, entryDates]
+      ),
+    ]);
+
+    const ownedSet = new Set(ownedRes.rows.map((r) => r.id));
+    for (const item of cleaned) {
+      if (!ownedSet.has(item.assigned_id)) {
+        return NextResponse.json(
+          { error: 'Permission denied: You can only add clips for your own assigned IDs.' },
+          { status: 403 }
+        );
+      }
     }
 
-    // Check if an entry already exists for this assigned_id + date (members cannot edit existing entries)
-    const existingRes = await pool.query(
-      'SELECT id FROM clip_entries WHERE assigned_id = $1 AND entry_date = $2',
-      [assigned_id, entry_date]
-    );
-
-    if (existingRes.rowCount && existingRes.rowCount > 0) {
-      return NextResponse.json(
-        {
-          error:
-            'An entry already exists for this ID on this date. Only Admin can edit or manipulate existing records.',
-        },
-        { status: 403 }
-      );
+    const existingSet = new Set(existingRes.rows.map((r) => `${r.assigned_id}_${r.entry_date}`));
+    for (const item of cleaned) {
+      if (existingSet.has(`${item.assigned_id}_${item.entry_date}`)) {
+        return NextResponse.json(
+          {
+            error:
+              'An entry already exists for one of these IDs on this date. Only Admin can edit existing records.',
+          },
+          { status: 403 }
+        );
+      }
     }
 
+    // Batch insert all entries in 1 single query
     const res = await pool.query(
       `INSERT INTO clip_entries (assigned_id, entry_date, clips)
-       VALUES ($1, $2, $3)
+       SELECT * FROM UNNEST($1::uuid[], $2::date[], $3::int[])
        RETURNING *;`,
-      [assigned_id, entry_date, count]
+      [
+        cleaned.map((i) => i.assigned_id),
+        cleaned.map((i) => i.entry_date),
+        cleaned.map((i) => i.clips),
+      ]
     );
 
-    return NextResponse.json({ entry: res.rows[0] });
+    return NextResponse.json({
+      entry: res.rows[0],
+      entries: res.rows,
+    });
   } catch (err: any) {
     console.error('Error creating clip entry:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

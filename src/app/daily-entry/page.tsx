@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import {
   getPeopleWithIds,
+  peekPeopleCache,
   getClipEntriesByDate,
+  peekDailyEntriesCache,
   upsertClipEntry,
+  batchCreateClipEntries,
   updateClipEntry,
   deleteClipEntry,
   createAssignedId,
@@ -37,11 +40,14 @@ import {
 } from 'lucide-react';
 
 export default function DailyEntryPage() {
-  const { user, isAdmin, loading: authLoading } = useAuth();
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [people, setPeople] = useState<PersonWithIds[]>([]);
-  const [entries, setEntries] = useState<ClipEntryDetail[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user, isAdmin } = useAuth();
+  const initialDate = format(new Date(), 'yyyy-MM-dd');
+  const [selectedDate, setSelectedDate] = useState<string>(initialDate);
+  const cachedPeople = peekPeopleCache();
+  const cachedEntries = peekDailyEntriesCache(initialDate);
+  const [people, setPeople] = useState<PersonWithIds[]>(cachedPeople || []);
+  const [entries, setEntries] = useState<ClipEntryDetail[]>(cachedEntries || []);
+  const [loading, setLoading] = useState(!cachedEntries);
 
   // Admin: selected person for ID assignment & optional table filter
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
@@ -77,9 +83,9 @@ export default function DailyEntryPage() {
     setTimeout(() => setFeedback(null), 3500);
   };
 
-  const fetchPeople = async () => {
+  const fetchPeople = async (force = false) => {
     try {
-      const data = await getPeopleWithIds();
+      const data = await getPeopleWithIds(force);
       setPeople(data);
       if (data.length > 0) {
         if (!isAdmin && user?.email) {
@@ -99,10 +105,8 @@ export default function DailyEntryPage() {
   };
 
   useEffect(() => {
-    if (!authLoading) {
-      fetchPeople();
-    }
-  }, [user, isAdmin, authLoading]);
+    fetchPeople(false);
+  }, [user?.email, isAdmin]);
 
   const currentPerson = useMemo(() => {
     if (!isAdmin && user?.email) {
@@ -113,10 +117,16 @@ export default function DailyEntryPage() {
     return people.find((p) => p.id === selectedPersonId) || null;
   }, [people, selectedPersonId, isAdmin, user]);
 
-  const loadEntriesForDate = async (date: string) => {
-    setLoading(true);
+  const loadEntriesForDate = async (date: string, force = false) => {
+    const cached = !force ? peekDailyEntriesCache(date) : null;
+    if (cached) {
+      setEntries(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
-      const data = await getClipEntriesByDate(date);
+      const data = await getClipEntriesByDate(date, force);
       setEntries(data);
       setMultiSheetValues({});
     } catch (err) {
@@ -127,7 +137,7 @@ export default function DailyEntryPage() {
   };
 
   useEffect(() => {
-    loadEntriesForDate(selectedDate);
+    loadEntriesForDate(selectedDate, false);
   }, [selectedDate]);
 
   // Auto-select first unlogged assigned ID for Member single form
@@ -192,7 +202,7 @@ export default function DailyEntryPage() {
       }
       setAssignIdInput('');
       setAssignIdNotes('');
-      await fetchPeople();
+      await fetchPeople(true);
     } catch (err: any) {
       setAssignError(err.message || 'Failed to assign ID');
     } finally {
@@ -208,8 +218,7 @@ export default function DailyEntryPage() {
     try {
       await deleteAssignedId(idRecordId);
       showNotification(`ID ${idVal} removed from ${currentPerson.name}`);
-      await fetchPeople();
-      await loadEntriesForDate(selectedDate);
+      await Promise.all([fetchPeople(true), loadEntriesForDate(selectedDate, true)]);
     } catch (err: any) {
       alert(err.message || 'Failed to remove ID');
     }
@@ -234,8 +243,7 @@ export default function DailyEntryPage() {
       await updateClipEntry(editingEntry.entry_id, count, editDateValue || editingEntry.entry_date);
       setEditingEntry(null);
       showNotification('Clip record updated successfully');
-      await fetchPeople();
-      await loadEntriesForDate(selectedDate);
+      await Promise.all([fetchPeople(true), loadEntriesForDate(selectedDate, true)]);
     } catch (err: any) {
       setEditError(err.message || 'Failed to update clip record');
     } finally {
@@ -255,8 +263,7 @@ export default function DailyEntryPage() {
     try {
       await deleteClipEntry(entry.entry_id);
       showNotification('Clip entry deleted');
-      await fetchPeople();
-      await loadEntriesForDate(selectedDate);
+      await Promise.all([fetchPeople(true), loadEntriesForDate(selectedDate, true)]);
     } catch (err: any) {
       alert(err.message || 'Failed to delete entry');
     }
@@ -286,8 +293,7 @@ export default function DailyEntryPage() {
       await upsertClipEntry(selectedAssignedId, selectedDate, clipsNum);
       showNotification('Clip entry saved successfully!');
       setClipsInput('');
-      await fetchPeople();
-      await loadEntriesForDate(selectedDate);
+      await Promise.all([fetchPeople(true), loadEntriesForDate(selectedDate, true)]);
     } catch (err: any) {
       setFormError(err.message || 'Failed to save clip entry');
     } finally {
@@ -303,9 +309,10 @@ export default function DailyEntryPage() {
       .filter((idObj) => !existingMap.has(idObj.id))
       .map((idObj) => ({
         assigned_id: idObj.id,
-        valStr: multiSheetValues[idObj.id],
+        entry_date: selectedDate,
+        clips: parseInt(multiSheetValues[idObj.id] ?? '', 10),
       }))
-      .filter((item) => item.valStr !== undefined && item.valStr.trim() !== '');
+      .filter((item) => !isNaN(item.clips) && item.clips >= 0);
 
     if (pendingEntries.length === 0) {
       alert('Please enter clip counts for at least one unlogged ID.');
@@ -314,15 +321,9 @@ export default function DailyEntryPage() {
 
     setMultiSaving(true);
     try {
-      for (const item of pendingEntries) {
-        const count = parseInt(item.valStr, 10);
-        if (!isNaN(count) && count >= 0) {
-          await upsertClipEntry(item.assigned_id, selectedDate, count);
-        }
-      }
+      await batchCreateClipEntries(pendingEntries);
       showNotification(`Saved ${pendingEntries.length} clip entry(s)!`);
-      await fetchPeople();
-      await loadEntriesForDate(selectedDate);
+      await Promise.all([fetchPeople(true), loadEntriesForDate(selectedDate, true)]);
     } catch (err: any) {
       alert(err.message || 'Failed to save entries');
     } finally {

@@ -3,7 +3,6 @@ import crypto from 'crypto';
 
 const { Pool } = pg;
 
-// Singleton pool instance across hot reloads in Next.js
 declare global {
   // eslint-disable-next-line no-var
   var __postgres_pool: pg.Pool | undefined;
@@ -18,9 +17,11 @@ export const pool: pg.Pool =
   new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    max: 15,
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 8000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
 
 if (process.env.NODE_ENV !== 'production') {

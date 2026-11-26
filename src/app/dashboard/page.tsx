@@ -5,7 +5,7 @@ import Link from 'next/link';
 import AppShell from '@/components/layout/AppShell';
 import StatCard from '@/components/ui/StatCard';
 import { Button } from '@/components/ui/Button';
-import { getDashboardData } from '@/lib/services/clipService';
+import { getDashboardData, peekDashboardCache } from '@/lib/services/clipService';
 import { formatNumber, formatDate } from '@/lib/utils';
 import { useAuth } from '@/lib/useAuth';
 import type { ClipEntryDetail } from '@/types/database';
@@ -37,7 +37,8 @@ import {
 
 export default function DashboardPage() {
   const { isAdmin } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const cachedInit = peekDashboardCache();
+  const [loading, setLoading] = useState(!cachedInit);
   const [data, setData] = useState<{
     totalPeople: number;
     totalAssignedIds: number;
@@ -51,20 +52,22 @@ export default function DashboardPage() {
     }[];
     recentEntries: ClipEntryDetail[];
     last7DaysTrend: { date: string; label: string; clips: number }[];
-  }>({
-    totalPeople: 0,
-    totalAssignedIds: 0,
-    todayTotalClips: 0,
-    currentMonthTotalClips: 0,
-    personMonthlySummaries: [],
-    recentEntries: [],
-    last7DaysTrend: [],
-  });
+  }>(
+    cachedInit || {
+      totalPeople: 0,
+      totalAssignedIds: 0,
+      todayTotalClips: 0,
+      currentMonthTotalClips: 0,
+      personMonthlySummaries: [],
+      recentEntries: [],
+      last7DaysTrend: [],
+    }
+  );
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (force = false) => {
+    if (!peekDashboardCache() || force) setLoading(true);
     try {
-      const res = await getDashboardData();
+      const res = await getDashboardData(force);
       setData(res);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
@@ -74,7 +77,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(false);
   }, []);
 
   return (
@@ -103,7 +106,7 @@ export default function DashboardPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={loadData}
+              onClick={() => loadData(true)}
               isLoading={loading}
               leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
             >
@@ -233,6 +236,7 @@ export default function DashboardPage() {
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#clipGradient)"
+                    isAnimationActive={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>

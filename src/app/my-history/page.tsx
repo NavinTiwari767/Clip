@@ -6,7 +6,7 @@ import AppShell from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/lib/useAuth';
-import { updateClipEntry, deleteClipEntry } from '@/lib/services/clipService';
+import { updateClipEntry, deleteClipEntry, getMyHistory, peekMyHistoryCache } from '@/lib/services/clipService';
 import { formatNumber } from '@/lib/utils';
 import {
   CalendarDays,
@@ -55,9 +55,15 @@ interface HistoryResponse {
 export default function MyHistoryPage() {
   const { user, isAdmin } = useAuth();
   const [days, setDays] = useState<number>(12);
-  const [selectedPersonId, setSelectedPersonId] = useState<string>('');
-  const [data, setData] = useState<HistoryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedPersonId, setSelectedPersonId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('personId') || '';
+    }
+    return '';
+  });
+  const initialCached = peekMyHistoryCache(12, selectedPersonId || undefined);
+  const [data, setData] = useState<HistoryResponse | null>(initialCached);
+  const [loading, setLoading] = useState(!initialCached);
 
   // Admin manipulation modal
   const [editingEntry, setEditingEntry] = useState<{ entry: HistoryEntry; date: string } | null>(null);
@@ -71,21 +77,17 @@ export default function MyHistoryPage() {
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  const loadHistory = async (selectedDays: number, personIdParam?: string) => {
-    setLoading(true);
+  const loadHistory = async (selectedDays: number, personIdParam?: string, force = false) => {
+    const cached = !force ? peekMyHistoryCache(selectedDays, personIdParam) : null;
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
-      const qs = new URLSearchParams({ days: String(selectedDays) });
-      if (personIdParam) {
-        qs.set('personId', personIdParam);
-      }
-      const res = await fetch(`/api/my-history?${qs.toString()}`);
-      if (res.ok) {
-        const json: HistoryResponse = await res.json();
-        setData(json);
-        if (!personIdParam && json.person_id) {
-          setSelectedPersonId(json.person_id);
-        }
-      }
+      const json: HistoryResponse = await getMyHistory(selectedDays, personIdParam, force);
+      setData(json);
     } catch (err) {
       console.error('Failed to load history:', err);
     } finally {
@@ -94,7 +96,7 @@ export default function MyHistoryPage() {
   };
 
   useEffect(() => {
-    loadHistory(days, selectedPersonId || undefined);
+    loadHistory(days, selectedPersonId || undefined, false);
   }, [days, selectedPersonId]);
 
   const handleAdminUpdate = async (e: React.FormEvent) => {
@@ -108,7 +110,7 @@ export default function MyHistoryPage() {
       await updateClipEntry(editingEntry.entry.entry_id, count, editDate);
       setEditingEntry(null);
       showToast('Clip record updated');
-      loadHistory(days, selectedPersonId || undefined);
+      loadHistory(days, selectedPersonId || undefined, true);
     } catch (err: any) {
       alert(err.message || 'Failed to update record');
     } finally {
@@ -122,7 +124,7 @@ export default function MyHistoryPage() {
     try {
       await deleteClipEntry(entryId);
       showToast('Clip entry deleted');
-      loadHistory(days, selectedPersonId || undefined);
+      loadHistory(days, selectedPersonId || undefined, true);
     } catch (err: any) {
       alert(err.message || 'Failed to delete record');
     }
@@ -160,7 +162,7 @@ export default function MyHistoryPage() {
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-accent-purple" />
                   <select
-                    value={selectedPersonId}
+                    value={selectedPersonId || data.person_id}
                     onChange={(e) => setSelectedPersonId(e.target.value)}
                     className="px-3 py-1.5 text-xs font-bold bg-background border border-accent-purple/40 rounded-lg text-foreground focus:outline-none focus:border-accent-purple"
                   >
@@ -201,7 +203,7 @@ export default function MyHistoryPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => loadHistory(days, selectedPersonId || undefined)}
+              onClick={() => loadHistory(days, selectedPersonId || undefined, true)}
               isLoading={loading}
               leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
             >

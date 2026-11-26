@@ -15,38 +15,38 @@ export async function GET(request: NextRequest) {
     const endDate = format(endOfMonth(dateObj), 'yyyy-MM-dd');
     const monthName = format(dateObj, 'MMMM yyyy');
 
-    // 1. All people
-    const peopleRes = await pool.query('SELECT * FROM people ORDER BY name ASC');
-    // 2. All assigned IDs
-    const idsRes = await pool.query('SELECT * FROM assigned_ids ORDER BY id_value ASC');
-
-    // 3. All clip entries in month
-    const entriesRes = await pool.query(
-      `SELECT 
-        ce.id AS entry_id,
-        ce.entry_date::text AS entry_date,
-        ce.clips,
-        ce.created_at AS entry_created_at,
-        ce.updated_at AS entry_updated_at,
-        ai.id AS assigned_id,
-        ai.id_value,
-        ai.notes AS id_notes,
-        p.id AS person_id,
-        p.name AS person_name
-      FROM clip_entries ce
-      JOIN assigned_ids ai ON ce.assigned_id = ai.id
-      JOIN people p ON ai.person_id = p.id
-      WHERE ce.entry_date >= $1 AND ce.entry_date <= $2
-      ORDER BY ce.entry_date ASC`,
-      [startDate, endDate]
-    );
+    // Run all 3 queries in parallel
+    const [peopleRes, idsRes, entriesRes] = await Promise.all([
+      pool.query('SELECT * FROM people ORDER BY name ASC'),
+      pool.query('SELECT * FROM assigned_ids ORDER BY id_value ASC'),
+      pool.query(
+        `SELECT 
+          ce.id AS entry_id,
+          ce.entry_date::text AS entry_date,
+          ce.clips,
+          ce.created_at AS entry_created_at,
+          ce.updated_at AS entry_updated_at,
+          ai.id AS assigned_id,
+          ai.id_value,
+          ai.notes AS id_notes,
+          p.id AS person_id,
+          p.name AS person_name
+        FROM clip_entries ce
+        JOIN assigned_ids ai ON ce.assigned_id = ai.id
+        JOIN people p ON ai.person_id = p.id
+        WHERE ce.entry_date >= $1 AND ce.entry_date <= $2
+        ORDER BY ce.entry_date ASC`,
+        [startDate, endDate]
+      ),
+    ]);
 
     const allEntries = entriesRes.rows;
     const overallTotal = allEntries.reduce((sum, e) => sum + (e.clips || 0), 0);
 
-    // Grouping
+    const personLookup = new Map<string, string>();
     const personMap = new Map<string, any>();
     peopleRes.rows.forEach((p) => {
+      personLookup.set(p.id, p.name);
       personMap.set(p.id, {
         person_id: p.id,
         person_name: p.name,
@@ -58,11 +58,10 @@ export async function GET(request: NextRequest) {
 
     const idMap = new Map<string, any>();
     idsRes.rows.forEach((i) => {
-      const p = peopleRes.rows.find((pr) => pr.id === i.person_id);
       idMap.set(i.id, {
         assigned_id: i.id,
         id_value: i.id_value,
-        person_name: p?.name || 'Unknown',
+        person_name: personLookup.get(i.person_id) || 'Unknown',
         person_id: i.person_id,
         notes: i.notes,
         total_clips: 0,
@@ -91,7 +90,6 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Daily totals
     const daysInMonth = getDaysInMonth(dateObj);
     const dailyMap = new Map<string, number>();
     for (let day = 1; day <= daysInMonth; day++) {
